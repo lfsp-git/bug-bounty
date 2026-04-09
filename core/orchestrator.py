@@ -26,6 +26,14 @@ RATE_LIMIT = 50
 MAX_SUBS_PER_TARGET = 2000 
 _CACHE_TIMES = "recon/tool_times.json"
 
+def count_lines(filepath: str) -> int:
+    """Count lines safely with context manager to prevent file descriptor leaks"""
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            return sum(1 for _ in f)
+    except FileNotFoundError:
+        return 0
+
 def _load_tool_times() -> Dict[str, Any]:
     if os.path.exists(_CACHE_TIMES):
         try:
@@ -177,9 +185,9 @@ class MissionRunner:
             _live_view_data["Nuclei"]["status"] = "idle"
             _live_view_data["Nuclei"]["vulns"] = _count_findings(findings_file) if os.path.exists(findings_file) else 0
         
-        # Aplicar filtro anti-falsos positivos
-        from core.fp_filter import FalsePositiveKiller
-        FalsePositiveKiller.sanitize_findings(findings_file)
+        # Consolidar filtragem e validação em um passo único
+        if os.path.exists(findings_file):
+            self._filter_and_validate_findings(findings_file)
 
     def _run_vulnerability_phase(self, paths):
         # Aplica filtro sniper
@@ -191,7 +199,7 @@ class MissionRunner:
         apply_sniper_filter(ns, ns_clean)
         ns = ns_clean
 
-        sub_count = sum(1 for _ in open(ns, 'r'))
+        sub_count = count_lines(ns)
         if sub_count > MAX_SUBS_PER_TARGET:
             ui_log("GUARD", f"Alvo abusivo ({sub_count} subs). Truncando lista", Colors.WARNING)
             t_ns = f"{ns}_truncated"
@@ -203,15 +211,20 @@ class MissionRunner:
 
         # Executa fase tática
         self._run_tactical_phase(paths)
-
-        # Aplica filtro anti-falsos positivos
-        findings_file = paths["fin"]
+    
+    def _filter_and_validate_findings(self, findings_file):
+        """Single consolidation point: FP filtering + AI validation"""
         from core.fp_filter import FalsePositiveKiller
+        
+        # Step 1: Apply FalsePositiveKiller (in-place)
         FalsePositiveKiller.sanitize_findings(findings_file)
-
-        # Validação com IA (apenas para vulnerabilidades críticas/high)
-        self._validate_findings_with_ai(findings_file)
-
+        
+        # Step 2: AI validation only if score warrants it
+        if self.target.get('score', 0) >= 80:
+            self._validate_findings_with_ai(findings_file)
+        else:
+            ui_log("AI VALIDATION", "Score < 80. Pulando validação com IA.", Colors.INFO)
+    
     def _validate_findings_with_ai(self, findings_file):
         """Usa IA para validar vulnerabilidades críticas/high."""
         ai_client = AIClient()
@@ -219,52 +232,60 @@ class MissionRunner:
             ui_log("AI VALIDATION", "IA offline. Pulando validação.", Colors.WARNING)
             return
         
-        ui_log("AI VALIDATION", "Validando vulnerabilidades críticas com IA...", Colors.INFO)
-        
-        # Verifica se o arquivo existe
-        if not os.path.exists(findings_file):
-            ui_log("AI VALIDATION", "Arquivo de findings não encontrado. Pulando validação.", Colors.WARNING)
+        if not os.path.exists(findings_file) or os.path.getsize(findings_file) == 0:
+            ui_log("AI VALIDATION", "Sem findings para validar.", Colors.INFO)
             return
+        
+        ui_log("AI VALIDATION", "Validando vulnerabilidades críticas com IA...", Colors.INFO)
         
         validated_findings = []
         critical_keywords = ['critical', 'high', 'rce', 'sql', 'xss', 'xxe', 'misconfig', 'takeover']
         
-        with open(findings_file, 'r') as f:
-            for line in f:
-                try:
-                    vuln = json.loads(line)
-                    template_id = vuln.get('template-id', '').lower()
-                    host = vuln.get('host', '')
-                    port = vuln.get('port', '')
-                    extracted = vuln.get('extracted-results', [])
+        try:
+            with open(findings_file, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:  # Skip empty lines
+                        continue
                     
-                    # Verifica se é uma vulnerabilidade crítica/high baseada no template
-                    is_critical = any(keyword in template_id for keyword in critical_keywords)
-                    
-                    if is_critical:
-                        prompt = f"""Analise a seguinte vulnerabilidade:
-
-Host: {host}
-Port: {port}
+                    try:
+                        vuln = json.loads(line)
+                        template_id = vuln.get('template-id', '').lower()
+                        host = vuln.get('host', '')
+                        
+                        # Only validate critical/high findings
+                        is_critical = any(keyword in template_id for keyword in critical_keywords)
+                        
+                        if is_critical:
+                            prompt = f"""Analyze: Is this a real vulnerability?
+                            
+Target: {host}
 Template: {template_id}
-Extracted: {extracted}
-
-Isso é um falso positivo? Responda SIM ou NÃO. Seja breve."""
-                        response = ai_client.complete(prompt, max_tokens=200)
-                        if 'SIM' in response.upper() or 'YES' in response.upper():
-                            ui_log("AI VALIDATION", f"Descartando falso positivo em {host}: {template_id}", Colors.WARNING)
-                            continue  # Pula este falso positivo
+Respond only: VALID or INVALID"""
+                            response = ai_client.complete(prompt, max_tokens=10)
+                            
+                            if 'VALID' in response.upper():
+                                validated_findings.append(line)
+                            else:
+                                ui_log("AI VALIDATION", f"Rejected: {host} ({template_id})", Colors.WARNING)
+                        else:
+                            validated_findings.append(line)
                     
-                    validated_findings.append(line)
-                except Exception as e:
-                    ui_log("AI VALIDATION", f"Erro ao validar finding: {str(e)[:50]}", Colors.ERROR)
-                    validated_findings.append(line)
-        
-        # Reescreve o arquivo
-        with open(findings_file, 'w') as f:
-            f.writelines(validated_findings)
-        
-        ui_log("AI VALIDATION", "Validação completa.", Colors.SUCCESS)
+                    except json.JSONDecodeError:
+                        ui_log("AI VALIDATION", f"Malformed JSON line, skipping", Colors.WARNING)
+                        continue
+                    except Exception as e:
+                        ui_log("AI VALIDATION", f"Error: {str(e)[:40]}", Colors.ERROR)
+                        validated_findings.append(line)  # Fallback: keep finding
+            
+            # Rewrite file with validated findings
+            with open(findings_file, 'w', encoding='utf-8') as f:
+                for finding in validated_findings:
+                    f.write(finding + '\n')
+            
+            ui_log("AI VALIDATION", "Validation complete.", Colors.SUCCESS)
+        except Exception as e:
+            ui_log("AI VALIDATION", f"Validation failed: {str(e)[:50]}", Colors.ERROR)
 
     def run(self):
         h = self.target.get('handle', 'unknown')

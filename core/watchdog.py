@@ -11,6 +11,7 @@ import random
 import logging
 import shutil
 import subprocess
+import shlex
 from datetime import datetime, timedelta
 
 # Adiciona os caminhos de binários ao PATH
@@ -73,6 +74,12 @@ def _fetch_global_wildcards():
     
     h1_u, h1_t = os.getenv("H1_USER"), os.getenv("H1_TOKEN")
     bc_t, it_t = os.getenv("BC_TOKEN"), os.getenv("IT_TOKEN")
+    
+    # Escape environment variables to prevent command injection
+    h1_u_safe = shlex.quote(h1_u) if h1_u else ""
+    h1_t_safe = shlex.quote(h1_t) if h1_t else ""
+    bc_t_safe = shlex.quote(bc_t) if bc_t else ""
+    it_t_safe = shlex.quote(it_t) if it_t else ""
 
     all_raw = set()
     threads = []
@@ -91,15 +98,15 @@ def _fetch_global_wildcards():
         except subprocess.TimeoutExpired:
             ui_log("WATCHDOG", f"PULADO: {name.upper()} (Timeout excedido).", Colors.WARNING)
 
-    # Configuração de comandos
+    # Configuração de comandos com env vars escapados
     tasks = []
-    if h1_u and h1_t:
-        tasks.append(("h1", ["bbscope", "h1", "-b", "-o", "t", "-u", h1_u, "-t", h1_t, "--active-only"], 180))
-    if bc_t:
+    if h1_u_safe and h1_t_safe:
+        tasks.append(("h1", ["bbscope", "h1", "-b", "-o", "t", "-u", h1_u_safe, "-t", h1_t_safe, "--active-only"], 180))
+    if bc_t_safe:
         # Timeout reduzido para o BC para não fritar a paciência
-        tasks.append(("bc", ["bbscope", "bc", "-b", "-o", "t", "-t", bc_t], 90))
-    if it_t:
-        tasks.append(("it", ["bbscope", "it", "-b", "-o", "t", "-t", it_t], 120))
+        tasks.append(("bc", ["bbscope", "bc", "-b", "-o", "t", "-t", bc_t_safe], 90))
+    if it_t_safe:
+        tasks.append(("it", ["bbscope", "it", "-b", "-o", "t", "-t", it_t_safe], 120))
 
     # Dispara as threads
     for t_name, t_cmd, t_time in tasks:

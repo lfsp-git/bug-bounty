@@ -94,17 +94,20 @@ def run_js_hunter(katana_file, output_file):
                 continue
             # Check if line is a URL to a JS file
             if line.endswith('.js'):
-                # Simulate finding secrets (in production, would fetch and scan the JS file)
-                import random
-                for _ in range(random.randint(0, 2)):  # Simulate finding 0-2 secrets per JS file
-                    secret_type = random.choice(["API Key", "Password", "AWS Key"])
-                    secret_value = ''.join(random.choices('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=32))
-                    secrets_found.append({
-                        'type': secret_type,
-                        'value': secret_value,
-                        'url': line,
-                        'confidence': 0.8
-                    })
+                # Use JSHunter to extract real secrets from JS files
+                try:
+                    from recon.js_hunter import JSHunter
+                    hunter = JSHunter()
+                    extracted = hunter.extract(line)
+                    for secret in extracted:
+                        secrets_found.append({
+                            'type': secret.get('type', 'Unknown'),
+                            'value': secret.get('secret', ''),
+                            'url': line,
+                            'confidence': secret.get('confidence', 0.9)
+                        })
+                except Exception as e:
+                    logging.debug(f"Failed to extract secrets from {line}: {e}")
     
     # Write results
     os.makedirs(os.path.dirname(output_file), exist_ok=True)

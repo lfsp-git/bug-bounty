@@ -13,8 +13,14 @@ class AIClient:
         self.selected_model = self._load_saved_model()
         self._cache = []
         # Create a session with explicit SSL verification
+        # Headers with API key are set at session level to avoid exposing in process args
         self.session = requests.Session()
         self.session.verify = True  # Explicit: Always verify SSL certificates
+        if self.api_key:
+            self.session.headers.update({
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            })
 
     def _load_saved_model(self) -> Optional[str]:
         if os.path.exists(self.MODELS_FILE):
@@ -40,7 +46,6 @@ class AIClient:
         try:
             r = self.session.get(
                 f"{self.base_url}/models",
-                headers={"Authorization":f"Bearer {self.api_key}"},
                 timeout=15,
                 verify=True  # Explicit SSL verification
             )
@@ -60,10 +65,6 @@ class AIClient:
         try:
             r = self.session.post(
                 f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization":f"Bearer {self.api_key}",
-                    "Content-Type":"application/json"
-                },
                 json={
                     "model":self.selected_model,
                     "messages":[{"role":"user","content":prompt}],
