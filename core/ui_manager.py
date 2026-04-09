@@ -108,7 +108,9 @@ def ui_update_status(step: str, detail: str, color=Colors.PRIMARY):
     print(f"\r\033[K{color}{icon} {step} {detail}{Colors.RESET}")
 
 def ui_clear():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    # Avoid invoking clear when TERM is not set (common in CI/testing)
+    if os.getenv('TERM'):
+        os.system('cls' if os.name == 'nt' else 'clear')
 
 def ui_banner():
     b_art = (
@@ -123,7 +125,9 @@ def ui_banner():
     print(f"    {Colors.DIM}v2.5 - PREDATOR TACTICAL VIEW{Colors.RESET}\n")
 
 def ui_clear_and_banner():
-    """Clear screen and show banner (used by mission header)."""
+    """Stop any active live view, clear screen, and show banner (used by mission header)."""
+    # Ensure live view thread is stopped before clearing to avoid overlapping renders
+    _stop_live_view()
     ui_clear()
     ui_banner()
 
@@ -164,51 +168,60 @@ def _live_view_loop():
         _render_live_view()
         time.sleep(0.5)
 
+_last_live_view_render = None
+_live_view_update_interval = 2.0  # Update every 2 seconds to avoid flicker
+_live_view_last_update = 0
+
 def _render_live_view():
-    """Renderiza o live view na tela."""
+    """Renderiza o live view na tela (only when data changes or every 2 seconds)."""
+    global _last_live_view_render, _live_view_last_update
+    
     with _live_view_lock:
-        # Posiciona no topo da área do live view (linha 5)
-        print("\033[5;1H", end="")  # Move para linha 5, coluna 1
+        # Create a hash of current data to detect changes
+        current_render = str(_live_view_data)
+        current_time = time.time()
+        
+        # Skip render if data hasn't changed and not enough time has passed
+        if current_render == _last_live_view_render and (current_time - _live_view_last_update) < _live_view_update_interval:
+            return
+        
+        _last_live_view_render = current_render
+        _live_view_last_update = current_time
+        
+        # Save cursor position
+        print("\033[s", end="")
+        
+        # Posiciona no topo da área do live view (linha 9, after banner)
+        print("\033[9;1H", end="")
         
         # Cabeçalho do live view
-        print(f"\r\033[K  {Colors.BOLD}LIVE VIEW - TOOL STATUS{Colors.RESET}")
-        print(f"\r\033[K  {'─'*56}")
+        print(f"  {Colors.BOLD}LIVE VIEW - TOOL STATUS{Colors.RESET}")
+        print(f"  {'─'*56}")
         
         # Exibe cada ferramenta
         for tool, data in _live_view_data.items():
             status_icon = "🟢" if data["status"] == "running" else "🟡" if data["status"] == "idle" else "🔴"
             progress_bar = "█" * int(data["progress"] * 20) + "░" * (20 - int(data["progress"] * 20))
-            print(f"\r\033[K  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {data.get('count', 0):<6}")
+            
+            # Get the appropriate count field
+            count = data.get('subs', data.get('live', data.get('endpoints', data.get('crawled', data.get('secrets', data.get('vulns', 0))))))
+            
+            print(f"  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {count:<6}")
         
         # Linha de separação
-        print(f"\r\033[K  {'─'*56}")
+        print(f"  {'─'*56}")
         
         # Stats gerais
-        total_subs = sum(d.get('subs', 0) for d in _live_view_data.values())
-        total_live = sum(d.get('live', 0) for d in _live_view_data.values())
-        total_endpoints = sum(d.get('endpoints', 0) for d in _live_view_data.values())
-        total_vulns = sum(d.get('vulns', 0) for d in _live_view_data.values())
+        total_subs = _live_view_data["Subfinder"].get("subs", 0)
+        total_live = _live_view_data["DNSX"].get("live", 0)
+        total_endpoints = _live_view_data["HTTPX"].get("endpoints", 0)
+        total_vulns = _live_view_data["Nuclei"].get("vulns", 0)
         
-        print(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}")
-        print(f"\r\033[K  {'─'*56}")
+        print(f"  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}")
+        print(f"  {'─'*56}")
         
-        # Exibe cada ferramenta
-        for tool, data in _live_view_data.items():
-            status_icon = "🟢" if data["status"] == "running" else "🟡" if data["status"] == "idle" else "🔴"
-            progress_bar = "█" * int(data["progress"] * 20) + "░" * (20 - int(data["progress"] * 20))
-            print(f"\r\033[K  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {data.get('count', 0):<6}")
-        
-        # Linha de separação
-        print(f"\r\033[K  {'─'*56}")
-        
-        # Stats gerais
-        total_subs = sum(d.get('subs', 0) for d in _live_view_data.values())
-        total_live = sum(d.get('live', 0) for d in _live_view_data.values())
-        total_endpoints = sum(d.get('endpoints', 0) for d in _live_view_data.values())
-        total_vulns = sum(d.get('vulns', 0) for d in _live_view_data.values())
-        
-        print(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}")
-        print(f"\r\033[K  {'─'*56}")
+        # Restore cursor position
+        print("\033[u", end="")
 
 def ui_mission_header(handle: str, score: int = 0):
     global _MISSION_START_TIME
@@ -224,8 +237,9 @@ def ui_mission_header(handle: str, score: int = 0):
     print(f"\r\033[K  │  SCORE   {Colors.SUCCESS if score >= 70 else Colors.WARNING if score >= 40 else Colors.DIM}{score:<46}{Colors.RESET}│")
     print(f"\r\033[K  └{'─'*56}┘\n")
 
-    # Inicia o live view
-    _start_live_view()
+    # Inicia o live view apenas se o terminal estiver configurado
+    if os.getenv('TERM') and sys.stdout.isatty():
+        _start_live_view()
 
 def ui_scan_summary(results: dict):
     global _MISSION_START_TIME
@@ -299,21 +313,28 @@ def ui_model_selection_menu(models: list) -> str:
         name = m.get('name', mid)[:24]
         print(f"\r\033[K    {Colors.SECONDARY}[{idx:<2}]{Colors.RESET} {Colors.INFO}{name:<26}{Colors.RESET} {Colors.DIM}{mid}{Colors.RESET}")
     print(f"\n\r\033[K  {'─'*56}")
-    return input(f"\r\033[K  {Colors.BOLD}Selecione o modelo (1-{len(models)}): {Colors.RESET}").strip()
+    try:
+        return input(f"\r\033[K  {Colors.BOLD}Selecione o modelo (1-{len(models)}): {Colors.RESET}").strip()
+    except EOFError:
+        return ""
+
 
 def ui_platform_selection_menu(platforms: list) -> str:
     """Present a list of platform names and return the selected platform name (lowercased)."""
-    if not platforms: return ''
+    if not platforms:
+        return ''
     print("\n  Plataformas disponíveis:")
     for i, p in enumerate(platforms, 1):
         name = p.get('name', str(p))
         print(f"   [{i}] {name}")
     try:
         sel = int(input(f"  Selecione (1-{len(platforms)}): ").strip())
-        if 1 <= sel <= len(platforms):
-            return platforms[sel-1].get('name')
+    except EOFError:
+        return ''
     except Exception:
-        pass
+        return ''
+    if 1 <= sel <= len(platforms):
+        return platforms[sel-1].get('name')
     return ''
 
 def ui_target_selection_list(ranked: list):
@@ -357,4 +378,8 @@ def ui_main_menu() -> str:
     print(f"  {Colors.SECONDARY}[3]{Colors.RESET} {Colors.INFO}Trocar Modelo de IA{Colors.RESET}")
     print(f"  {Colors.SECONDARY}[0]{Colors.RESET} {Colors.INFO}Sair{Colors.RESET}")
     print(f"  {'─'*40}")
-    return input(f"  {Colors.BOLD}Escolha uma opcao: {Colors.RESET}").strip()
+    try:
+        return input(f"  {Colors.BOLD}Escolha uma opcao: {Colors.RESET}").strip()
+    except EOFError:
+        # Non-interactive environment: return empty string to allow graceful exit
+        return ""

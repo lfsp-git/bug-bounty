@@ -75,7 +75,11 @@ def state_platforms(orch):
     avail = pm.get_available_platforms()
     if not avail:
         ui_log("AVISO", "Sem plataformas no YAML.", Colors.WARNING)
-        input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} "); return
+        try:
+            input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
+        except EOFError:
+            pass
+        return
 
     from core.ui_manager import ui_platform_selection_menu, ui_target_selection_list
     sel = ui_platform_selection_menu(avail)
@@ -90,7 +94,11 @@ def state_platforms(orch):
         ui_log("H1 API", "Cache expirado. Buscando programas...", Colors.WARNING)
         progs = pm.get_all_programs_from_platform(sel)
         if not progs:
-            input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} "); return
+            try:
+                input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
+            except EOFError:
+                pass
+            return
         ranked = orch.intel.rank_programs_for_list(progs)
 
     # UX PERFEITA: A tabela desce suavemente logo abaixo do log de sucesso
@@ -103,7 +111,10 @@ def state_platforms(orch):
             t = ranked[idx]
             ui_clear(); ui_banner()
             orch.start_mission(t['handle'], t['domains'], f"recon/db/{t['handle']}", t['score'])
-            input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
+            try:
+                input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
+            except EOFError:
+                pass
     except (ValueError, KeyboardInterrupt): pass
 
 def state_manual(orch):
@@ -111,22 +122,40 @@ def state_manual(orch):
     from core.ui_manager import ui_manual_target_input
     t = ui_manual_target_input()
     if not t: return
-    if input(f"\n  {Colors.WARNING}Scan {t['domains'][0]}? (s/n): {Colors.RESET}").lower() == 's':
+    try:
+        scan_input = input(f"\n  {Colors.WARNING}Scan {t['domains'][0]}? (s/n): {Colors.RESET}")
+    except EOFError:
+        scan_input = ''
+    if scan_input.lower() == 's':
         orch.start_mission(t['handle'], t['domains'], f"recon/db/{t['handle']}", t['score'])
-        input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
+        try:
+            input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
+        except EOFError:
+            pass
 
 def state_list(orch):
     ui_clear(); ui_banner()
     tgts = load_custom_targets()
     if not tgts:
         ui_log("AVISO", "alvos.txt vazio.", Colors.WARNING)
-        input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} "); return
+        try:
+            input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
+        except EOFError:
+            pass
+        return
     from core.ui_manager import ui_custom_targets_list
     sel = ui_custom_targets_list(tgts)
     if not sel: return
-    if input(f"\n  {Colors.WARNING}Scan {sel['domains'][0]}? (s/n): {Colors.RESET}").lower() == 's':
+    try:
+        scan_input = input(f"\n  {Colors.WARNING}Scan {sel['domains'][0]}? (s/n): {Colors.RESET}")
+    except EOFError:
+        scan_input = ''
+    if scan_input.lower() == 's':
         orch.start_mission(sel['handle'], sel['domains'], f"recon/db/{sel['handle']}", sel['score'])
-        input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
+        try:
+            input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
+        except EOFError:
+            pass
 
 def main():
     _load_env()
@@ -154,14 +183,29 @@ def main():
     while True:
         ui_clear(); ui_banner()
         ch = ui_main_menu()
-
-        if ch == 0:
-            ui_log("SAINDO", "Ate logo.", Colors.WARNING); break
-        elif ch == 1: state_platforms(orch)
-        elif ch == 2: state_manual(orch)
-        elif ch == 3: state_list(orch)
+        # If no input (e.g., non-interactive), exit gracefully
+        if not ch:
+            ui_log("SAINDO", "Sem entrada do usuário. Encerrando.", Colors.WARNING)
+            break
+        # Normalize input to integer if possible
+        try:
+            choice = int(ch)
+        except ValueError:
+            choice = None
+        if choice == 0:
+            ui_log("SAINDO", "Ate logo.", Colors.WARNING)
+            break
+        elif choice == 1:
+            state_platforms(orch)
+        elif choice == 2:
+            state_manual(orch)
+        elif choice == 3:
+            state_list(orch)
         else:
             ui_log("ERRO", "Invalido.", Colors.ERROR)
-            input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
+            try:
+                input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
+            except EOFError:
+                pass
 
 if __name__ == "__main__": main()

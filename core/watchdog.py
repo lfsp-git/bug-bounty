@@ -45,6 +45,17 @@ def _cleanup_disk(handle):
 
 import threading
 
+def _scan_target(orch, target):
+    """Run a single target scan using the orchestrator and return results dict.
+    This mirrors the behavior of ProOrchestrator.start_mission.
+    """
+    try:
+        # Expect target dict compatible with start_mission signature
+        return orch.start_mission(target)
+    except Exception as e:
+        ui_log("ERR", f"Scan failed for {target.get('original_handle','')}: {e}", Colors.ERROR)
+        return {}
+
 def _fetch_global_wildcards():
     """Coleta alvos das APIs com cache de 12h e execução em paralelo."""
     CACHE_FILE = "recon/baselines/api_wildcards.txt"
@@ -199,9 +210,10 @@ def _record_scan_result(handle, has_changes):
     
     # Salva
     with open(history_file, 'w') as f:
-        for handle, (timestamp, changed) in history.items():
-            f.write(f"{handle},{timestamp},{changed}\n")
-    return results
+        for h_key, (timestamp, changed) in history.items():
+            f.write(f"{h_key},{timestamp},{changed}\n")
+    # No explicit return needed
+
 
 def run_watchdog():
     ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo.", Colors.SUCCESS)
@@ -222,8 +234,8 @@ def run_watchdog():
                     if _should_process_target(handle):
                         ui_log("WATCHDOG", f"Processando: {t['original_handle']}", Colors.PRIMARY)
                         results = _scan_target(orch, t)
-                        # Verifica se houve mudanças (assumindo que results contém 'has_changes')
-                        has_changes = results.get('has_changes', False) if isinstance(results, dict) else False
+                        # Determine if there were changes based on presence of subdomains
+                        has_changes = bool(results.get('subdomains', 0)) if isinstance(results, dict) else False
                         _record_scan_result(handle, has_changes)
                     else:
                         ui_log("WATCHDOG", f"Pulando (histórico recente): {t['original_handle']}", Colors.DIM)
@@ -232,14 +244,15 @@ def run_watchdog():
                     return
                 except Exception as e:
                     ui_log("ERR", f"Erro em {t.get('original_handle', 'unknown')}: {e}", Colors.ERROR)
-
-            secs = random.randint(SLEEP_MIN, SLEEP_MAX)
-            ui_log("WATCHDOG", f"Dormindo até {(datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')}", Colors.DIM)
-            try:
-                time.sleep(secs)
-            except KeyboardInterrupt:
-                ui_log("WATCHDOG", "Interrupção recebida durante sleep. Encerrando...", Colors.WARNING)
-                return
+            # End of processing wildcards
+        # Sleep between cycles
+        secs = random.randint(SLEEP_MIN, SLEEP_MAX)
+        ui_log("WATCHDOG", f"Dormindo até {(datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')}", Colors.DIM)
+        try:
+            time.sleep(secs)
+        except KeyboardInterrupt:
+            ui_log("WATCHDOG", "Interrupção recebida durante sleep. Encerrando...", Colors.WARNING)
+            return
 
 if __name__ == "__main__":
     try:

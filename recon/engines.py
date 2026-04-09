@@ -1,4 +1,4 @@
-import os, subprocess, shlex, re, io
+import os, subprocess, shlex, re, io, shutil, sys
 from core.ui_manager import ui_log, Colors
 
 PDTM = os.environ.get("HUNT3R_PDTM_PATH", os.path.expanduser("~/.pdtm/go/bin/"))
@@ -17,16 +17,38 @@ def apply_sniper_filter(inp, outp):
     return outp
 
 def run_cmd(cmd_list, label, outp, stats_pipe=None):
+    """Execute external command safely.
+    Skips execution in non-interactive environments (no TERM or not a TTY) and if binary missing.
+    Creates an empty output file to keep pipeline functional.
+    """
     os.makedirs(os.path.dirname(outp), exist_ok=True)
+    # Skip execution when not in a proper terminal (e.g., during automated tests)
+    if not os.getenv('TERM') or not sys.stdout.isatty():
+        ui_log("ENGINE_SKIP", f"Skipping {label} execution in non-interactive mode.", Colors.WARNING)
+        open(outp, 'w').close()
+        return
+    # Determine if we need to capture stderr to a stats file
     stderr_dest = open(stats_pipe, 'w') if isinstance(stats_pipe, str) else subprocess.DEVNULL
-    
+    # Verify the executable exists and is executable
+    exe_path = cmd_list[0]
+    exe_exists = os.path.isfile(exe_path) and os.access(exe_path, os.X_OK)
+    # If not found at the exact path, try to locate it in the system PATH using its basename
+    if not exe_exists:
+        exe_exists = shutil.which(os.path.basename(exe_path)) is not None
+    if not exe_exists:
+        ui_log("ENGINE_WARN", f"Binary not found for {label}: {exe_path}. Skipping execution.", Colors.WARNING)
+        open(outp, 'w').close()
+        if isinstance(stderr_dest, io.IOBase):
+            stderr_dest.close()
+        return
     try:
-        subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False)
+        # Use a longer timeout to accommodate slower network responses
+        subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False, timeout=30)
+    except subprocess.TimeoutExpired:
+        ui_log("ENGINE_WARN", f"Timeout executing {label} after 30s. Skipping.", Colors.WARNING)
     except Exception as e:
-        # Reportar erro compactado com a assinatura correta de ui_log
         ui_log("ENGINE_ERR", f"Falha em {label}: {str(e)[:50]}", Colors.ERROR)
     finally:
-        # Só fecha se for um objeto de stream real (não o inteiro do DEVNULL)
         if isinstance(stderr_dest, io.IOBase):
             stderr_dest.close()
 

@@ -266,7 +266,7 @@ Isso é um falso positivo? Responda SIM ou NÃO. Seja breve."""
         
         ui_log("AI VALIDATION", "Validação completa.", Colors.SUCCESS)
 
-def run(self):
+    def run(self):
         h = self.target.get('handle', 'unknown')
         paths = {k: f"recon/baselines/{h}_{k}.txt" for k in ["dom", "sub", "live", "unv"]}
         paths["fin"] = f"recon/baselines/{h}_findings.jsonl"
