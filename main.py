@@ -199,6 +199,33 @@ def main():
         resume_mission(args.resume)
         return
 
+    if args.export:
+        ui_clear(); ui_banner()
+        ui_log("EXPORT", f"Exporting findings as {args.export.upper()}...", Colors.WARNING)
+        import glob
+        from core.exporter import ExportFormatter
+        all_findings = []
+        for f in glob.glob("recon/baselines/*_findings.jsonl"):
+            import json as _json
+            try:
+                with open(f, 'r', encoding='utf-8') as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if line:
+                            try:
+                                all_findings.append(_json.loads(line))
+                            except _json.JSONDecodeError:
+                                pass
+            except OSError:
+                pass
+        if not all_findings:
+            ui_log("EXPORT", "No findings found in recon/baselines/. Run a scan first.", Colors.WARNING)
+        else:
+            fmt = ExportFormatter(all_findings)
+            path = fmt.export(args.export)
+            ui_log("EXPORT", f"Exported {len(all_findings)} findings → {path}", Colors.SUCCESS)
+        return
+
     # TELA INICIAL: Renderiza o estado Menu
     ui_clear(); ui_banner()
     init_seq()

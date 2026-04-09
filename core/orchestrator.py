@@ -23,6 +23,10 @@ from core.diff_engine import ReconDiff
 # Rate limiting
 from core.rate_limiter import get_rate_limiter
 
+# Notification & Reporting
+from core.notifier import NotificationDispatcher
+from core.reporter import BugBountyReporter
+
 # Rate limiting from config (default 50)
 RATE_LIMIT = 50
 REQUESTS_PER_SECOND = 1.0  # Per-target throttling: 1 request per second
@@ -309,6 +313,38 @@ Respond only: VALID or INVALID"""
         except Exception as e:
             ui_log("AI VALIDATION", f"Validation failed: {str(e)[:50]}", Colors.ERROR)
 
+    def _notify_and_report(self, paths: dict, results: dict):
+        """Send notifications and generate bug bounty report after scan."""
+        h = self.target.get('handle', 'unknown')
+        findings_path = paths["fin"]
+        js_secrets_path = paths["live"] + ".js_secrets"
+
+        # 1. Notify via Telegram (Critical/High/Medium) and Discord (Low/Info)
+        try:
+            NotificationDispatcher.alert_nuclei(findings_path, h)
+        except Exception as e:
+            logging.warning(f"Notification failed: {e}")
+
+        # 2. Alert JS secrets to Telegram
+        try:
+            NotificationDispatcher.alert_js_secrets(js_secrets_path, h)
+        except Exception as e:
+            logging.warning(f"JS secrets notification failed: {e}")
+
+        # 3. Generate bug bounty report (Markdown, ready for submission)
+        try:
+            reporter = BugBountyReporter(h)
+            report_path = reporter.generate(
+                findings_path=findings_path,
+                js_secrets_path=js_secrets_path,
+                subdomains_count=results.get('subdomains', 0),
+                endpoints_count=results.get('endpoints', 0),
+            )
+            if report_path:
+                ui_log("REPORT", f"Bug bounty report: {report_path}", Colors.SUCCESS)
+        except Exception as e:
+            logging.warning(f"Report generation failed: {e}")
+
     def run(self):
         h = self.target.get('handle', 'unknown')
         paths = {k: f"recon/baselines/{h}_{k}.txt" for k in ["dom", "sub", "live", "unv"]}
@@ -329,8 +365,11 @@ Respond only: VALID or INVALID"""
         ui_mission_footer()
         
         # Salva baseline para diff engine
-        from core.diff_engine import ReconDiff
         ReconDiff.save_baseline(h, results)
+
+        # Notifica e gera relatório (EXCALIBUR pipeline final step)
+        self._notify_and_report(paths, results)
+
         return results
 
 
