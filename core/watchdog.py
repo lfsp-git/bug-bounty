@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Importe apenas o necessário
 from core.ui_manager import ui_log, Colors, ui_clear_and_banner
+from core.timeouts import TOOL_TIMEOUTS  # Centralized timeouts
 
 # Configurações
 GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
@@ -99,15 +100,14 @@ def _fetch_global_wildcards():
         except subprocess.TimeoutExpired:
             ui_log("WATCHDOG", f"PULADO: {name.upper()} (Timeout excedido).", Colors.WARNING)
 
-    # Configuração de comandos com env vars escapados
+    # Configuração de comandos com env vars escapados - usando timeouts centralizados
     tasks = []
     if h1_u_safe and h1_t_safe:
-        tasks.append(("h1", ["bbscope", "h1", "-b", "-o", "t", "-u", h1_u_safe, "-t", h1_t_safe, "--active-only"], 180))
+        tasks.append(("h1", ["bbscope", "h1", "-b", "-o", "t", "-u", h1_u_safe, "-t", h1_t_safe, "--active-only"], TOOL_TIMEOUTS.get("uncover", 90)))
     if bc_t_safe:
-        # Timeout reduzido para o BC para não fritar a paciência
-        tasks.append(("bc", ["bbscope", "bc", "-b", "-o", "t", "-t", bc_t_safe], 90))
+        tasks.append(("bc", ["bbscope", "bc", "-b", "-o", "t", "-t", bc_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
     if it_t_safe:
-        tasks.append(("it", ["bbscope", "it", "-b", "-o", "t", "-t", it_t_safe], 120))
+        tasks.append(("it", ["bbscope", "it", "-b", "-o", "t", "-t", it_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
 
     # Dispara as threads
     for t_name, t_cmd, t_time in tasks:

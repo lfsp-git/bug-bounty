@@ -1,5 +1,7 @@
 import os, subprocess, shlex, re, io, shutil, sys
+import logging
 from core.ui_manager import ui_log, Colors
+from core.timeouts import get_tool_timeout  # Centralized timeouts
 from recon.tool_discovery import find_tool
 
 PDTM = os.environ.get("HUNT3R_PDTM_PATH", os.path.expanduser("~/.pdtm/go/bin/"))
@@ -43,10 +45,10 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
             stderr_dest.close()
         return
     try:
-        # Use a longer timeout to accommodate slower network responses
-        subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False, timeout=30)
+        # Use timeout from centralized config
+        subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False, timeout=get_tool_timeout(label))
     except subprocess.TimeoutExpired:
-        ui_log("ENGINE_WARN", f"Timeout executing {label} after 30s. Skipping.", Colors.WARNING)
+        ui_log("ENGINE_WARN", f"Timeout executing {label} after {get_tool_timeout(label)}s. Skipping.", Colors.WARNING)
     except Exception as e:
         ui_log("ENGINE_ERR", f"Falha em {label}: {str(e)[:50]}", Colors.ERROR)
     finally:
