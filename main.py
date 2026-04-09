@@ -37,6 +37,16 @@ def _load_env():
                     os.environ.setdefault(key, value)
         except Exception as e:
             logger.error(f"Failed to load .env: {e}")
+    
+    # Validate required platform tokens
+    required_tokens = ['H1_TOKEN', 'BC_TOKEN', 'IT_TOKEN']
+    missing = [tok for tok in required_tokens if not os.getenv(tok)]
+    if missing:
+        logger.warning(f"Missing platform tokens: {', '.join(missing)}. API calls will fail silently.")
+    
+    # Validate H1_USER is set if H1_TOKEN exists
+    if os.getenv('H1_TOKEN') and not os.getenv('H1_USER'):
+        logger.warning("H1_TOKEN set but H1_USER missing. HackerOne API requires both.")
 
 
 def init_seq():
