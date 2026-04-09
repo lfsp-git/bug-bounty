@@ -1,5 +1,6 @@
 import os, subprocess, shlex, re, io, shutil, sys
 from core.ui_manager import ui_log, Colors
+from recon.tool_discovery import find_tool
 
 PDTM = os.environ.get("HUNT3R_PDTM_PATH", os.path.expanduser("~/.pdtm/go/bin/"))
 
@@ -53,25 +54,25 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
             stderr_dest.close()
 
 def run_subfinder(input_file, output_file, rate_limit=100):
-    run_cmd([f"{PDTM}subfinder", "-dL", input_file, "-o", output_file, "-silent", f"-rate-limit={rate_limit}"], "Subfinder", output_file)
+    run_cmd([find_tool("subfinder"), "-dL", input_file, "-o", output_file, "-silent", f"-rate-limit={rate_limit}"], "Subfinder", output_file)
 
 def run_dnsx(input_file, output_file, rate_limit=100):
-    run_cmd([f"{PDTM}dnsx", "-l", input_file, "-o", output_file, "-wd", "-silent", "-a", "-resp", f"-rate-limit={rate_limit}"], "DNSX", output_file)
+    run_cmd([find_tool("dnsx"), "-l", input_file, "-o", output_file, "-wd", "-silent", "-a", "-resp", f"-rate-limit={rate_limit}"], "DNSX", output_file)
 
 def run_uncover(domains, output_file):
     if not domains: return
-    run_cmd([f"{PDTM}uncover", "-q", ",".join(domains), "-o", output_file, "-silent"], "Uncover", output_file)
+    run_cmd([find_tool("uncover"), "-q", ",".join(domains), "-o", output_file, "-silent"], "Uncover", output_file)
 
 def run_httpx(input_file, output_file, rate_limit=100):
-    run_cmd([f"{PDTM}httpx", "-l", input_file, "-o", output_file, "-silent", "-ua", "random", f"-rate-limit={rate_limit}"], "HTTPX", output_file)
+    run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-ua", "random", f"-rate-limit={rate_limit}"], "HTTPX", output_file)
 
 def run_katana_surgical(input_file, output_file, rate_limit=100):
     """Função que estava faltando no import do Pylance"""
-    cmd = [f"{PDTM}katana", "-list", input_file, "-o", output_file, "-silent", f"-rate-limit={rate_limit}"]
+    cmd = [find_tool("katana"), "-list", input_file, "-o", output_file, "-silent", f"-rate-limit={rate_limit}"]
     run_cmd(cmd, "Katana", output_file)
 
 def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=100):
-    cmd = [f"{PDTM}nuclei", "-l", input_file, "-o", output_file, "-uau", "-silent", "-stats", "-sj", f"-rate-limit={rate_limit}"]
+    cmd = [find_tool("nuclei"), "-l", input_file, "-o", output_file, "-uau", "-silent", "-stats", "-sj", f"-rate-limit={rate_limit}"]
     if tags: cmd.extend(["-t", tags])
     run_cmd(cmd, "Nuclei", output_file, stats_pipe=stats_pipe)
 
