@@ -51,7 +51,10 @@ def run_subfinder(domain, output_file, aggressive=False):
     run_cmd(cmd, "Subfinder", output_file)
 
 def run_dnsx(input_file, output_file):
-    cmd = [f"{PDTM}dnsx", "-l", input_file, "-o", output_file, "-silent", "-a", "-cname", "-ptr"]
+    cmd = [
+        f"{PDTM}dnsx", "-l", input_file, "-o", output_file, "-silent",
+        "-a", "-cname", "-ptr", "-wd"  # Mandatory wildcard filter
+    ]
     run_cmd(cmd, "DNSX", output_file)
 
 def run_uncover(domain, output_file, shodan_key=None, censys_id=None, censys_secret=None):
@@ -73,8 +76,9 @@ def run_uncover(domain, output_file, shodan_key=None, censys_id=None, censys_sec
 
 def run_httpx(input_file, output_file):
     cmd = [
-        f"{PDTM}httpx", "-l", input_file, "-o", output_file, "-silent", 
-        "-title", "-tech-detect", "-status-code", "-follow-redirects"
+        f"{PDTM}httpx", "-l", input_file, "-o", output_file, "-silent",
+        "-title", "-tech-detect", "-status-code", "-follow-redirects",
+        "-ua", "random"  # Rotate User-Agents for stealth
     ]
     run_cmd(cmd, "HTTPX", output_file)
 
@@ -96,7 +100,10 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, extra_flags=""
     Roda o Nuclei.
     Separação de tags e flags táticas resolvidas.
     """
-    cmd = [f"{PDTM}nuclei", "-l", input_file, "-o", output_file]
+    cmd = [
+        f"{PDTM}nuclei", "-l", input_file, "-o", output_file,
+        "-uau", "-silent"  # Stealth flags
+    ]
     
     if tags:
         cmd.extend(["-tags", tags])

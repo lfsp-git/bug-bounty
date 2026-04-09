@@ -7,6 +7,7 @@ NUCLEI_CONCURRENCY = 50
 NUCLEI_BURST_SIZE = 10
 KATANA_CONCURRENCY = 5
 KATANA_CRAWL_DURATION = "10m"
+MAX_SUBS_PER_TARGET = 2000  # Resource guard against wildcard poisoning
 
 _SPIN = ['-', '\\', '|', '/']
 
@@ -754,8 +755,11 @@ class ProOrchestrator:
             with open(paths['htt'], 'r', encoding='utf-8', errors='ignore') as f:
                 urls = [line.split()[0] for line in f if line.strip().startswith('http')]
             if not urls: return
-            if len(urls) > 15000:
-                ui_log("SKIP", f"{len(urls)} URLs - ignorando.", Colors.WARNING); return
+            if len(urls) > MAX_SUBS_PER_TARGET:
+                urls = urls[:MAX_SUBS_PER_TARGET]
+                ui_log("RESOURCE GUARD", 
+                    f"Truncado para {MAX_SUBS_PER_TARGET} alvos (wildcard protection)", 
+                    Colors.WARNING)
             with open(paths['htt_urls'], 'w', encoding='utf-8') as f: f.write('\n'.join(urls))
             ui_log("EXTRACTED", f"{len(urls)} URLs extraidas", Colors.SUCCESS)
         except Exception as e:
