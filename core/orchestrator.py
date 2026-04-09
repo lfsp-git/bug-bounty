@@ -1,6 +1,13 @@
 import os, sys, time, threading, math, json, logging
 from core.ui_manager import ui_mission_header, ui_log, ui_update_status, ui_scan_summary, Colors
 
+# Constantes de Performance
+NUCLEI_RPS_LIMIT = 300
+NUCLEI_CONCURRENCY = 50
+NUCLEI_BURST_SIZE = 10
+KATANA_CONCURRENCY = 5
+KATANA_CRAWL_DURATION = "10m"
+
 _SPIN = ['-', '\\', '|', '/']
 
 _CACHE_TIMES = "recon/tool_times.json"
@@ -176,8 +183,29 @@ class ProOrchestrator:
         return os.path.exists(fp) and os.path.getsize(fp) > 0 and (time.time() - os.path.getmtime(fp)) < self.ttl
 
     def start_mission(self, handle, domains, base_path, score):
+        """Controlador de alto nível para execução da missão"""
         ui_mission_header(handle, score)
-        paths = {
+        paths = self._setup_paths(base_path)
+        
+        self._validate_api_keys()
+        self._check_baseline(handle)
+        
+        if not self._run_subfinder_phase(domains, paths, score):
+            return
+            
+        if not self._run_dnsx_phase(paths):
+            return
+            
+        if not self._run_uncover_phase(domains, paths):
+            return
+            
+        self._scan(paths["target"], paths, handle, score)
+        self._post_process(paths, handle, score)
+        self._save_diff_and_baseline(handle, paths)
+
+    def _setup_paths(self, base_path):
+        """Configura os caminhos dos arquivos de saída"""
+        return {
             "sub": f"{base_path}/subdomains.txt",
             "sub_alive": f"{base_path}/subdomains_alive.txt",
             "htt": f"{base_path}/httpx.txt",
@@ -186,10 +214,11 @@ class ProOrchestrator:
             "fin": f"{base_path}/findings.txt",
             "rep": f"{base_path}/ia_report.txt",
             "js": f"{base_path}/js_secrets.json",
+            "target": f"{base_path}/subdomains_alive_clean.txt"
         }
 
-        ui_update_status("RECON", "Iniciando enumeracao...", Colors.PRIMARY)
-
+    def _validate_api_keys(self):
+        """Valida a presença de chaves API críticas"""
         if not os.getenv("SHODAN_API_KEY") and not os.getenv("CENSYS_API_ID"):
             ui_log("PIPELINE", "SHODAN/CENSYS ausentes. Uncover sera ineficiente.", Colors.WARNING)
 
@@ -197,11 +226,17 @@ class ProOrchestrator:
         if not shodan_sub:
             ui_log("PIPELINE", "Subfinder sem APIs (provider-config.yaml). Resultado sera baixo.", Colors.ERROR)
 
+    def _check_baseline(self, handle):
+        """Verifica e carrega baseline existente"""
         from core.diff_engine import ReconDiff
         baseline = ReconDiff.load_baseline(handle)
         if baseline:
             ui_log("DIFF", f"Baseline encontrada ({baseline.get('timestamp', '?')}). Calculando deltas apos scan...", Colors.INFO)
 
+    def _run_subfinder_phase(self, domains, paths, score):
+        """Executa fase de enumeração de subdomínios"""
+        ui_update_status("RECON", "Iniciando enumeracao...", Colors.PRIMARY)
+        
         run_sub = False
         aggressive_mode = score >= 70
 
@@ -209,7 +244,8 @@ class ProOrchestrator:
             run_sub = True
         else:
             if aggressive_mode:
-                with open(paths["sub"], 'r') as f: cached_count = sum(1 for _ in f)
+                with open(paths["sub"], 'r') as f:
+                    cached_count = sum(1 for _ in f)
                 if cached_count < 50:
                     ui_log("SUBFINDER", f"Cache fraco ({cached_count} subs). Forcando agressivo...", Colors.WARNING)
                     run_sub = True
@@ -224,8 +260,8 @@ class ProOrchestrator:
 
             tld = tldextract.TLDExtract(cache_dir=None)
             unique_roots = set()
-            for d in domains:
-                ext = tld(d)
+            for domain in domains:
+                ext = tld(domain)
                 root = f"{ext.domain}.{ext.suffix}"
                 unique_roots.add(root)
 
@@ -233,14 +269,14 @@ class ProOrchestrator:
             unique_subs = set()
             for idx, root in enumerate(list(unique_roots)):
                 progress_label = f"SUB [{idx+1}/{total_roots}] {root[:20]}"
-                temp_file = f"{base_path}/.sub_raw_{idx}.txt"
+                temp_file = f"{os.path.dirname(paths['sub'])}/.sub_raw_{idx}.txt"
                 _run_with_progress(progress_label, lambda tf=temp_file, r=root: run_subfinder(r, tf, aggressive=aggressive_mode))
                 if os.path.exists(temp_file):
                     try:
                         with open(temp_file, 'r', errors='ignore') as f:
                             for line in f:
-                                s = line.strip()
-                                if s: unique_subs.add(s)
+                                sub = line.strip()
+                                if sub: unique_subs.add(sub)
                         os.remove(temp_file)
                     except Exception as e:
                         logging.error(f"Erro ao ler temp {temp_file}: {e}")
@@ -254,72 +290,83 @@ class ProOrchestrator:
 
         sub_count = 0
         if os.path.exists(paths["sub"]):
-            with open(paths["sub"], 'r') as f: sub_count = sum(1 for _ in f)
+            with open(paths["sub"], 'r') as f:
+                sub_count = sum(1 for _ in f)
 
         if sub_count == 0:
-            ui_log("ABORTADO", "Nenhum subdominio encontrado.", Colors.ERROR); return
+            ui_log("ABORTADO", "Nenhum subdominio encontrado.", Colors.ERROR)
+            return False
 
         if score >= 50 and sub_count < 10:
             ui_log("ANOMALIA", f"Apenas {sub_count} subs para alvo CRITICO. Possivel WAF/Api Limit.", Colors.ERROR)
             ui_log("DICA", "Pule este alvo ou use lista manual de subs.", Colors.WARNING)
-            return
+            return False
 
+        return True
+
+    def _run_dnsx_phase(self, paths):
+        """Executa fase de verificação DNS"""
         if os.path.exists(paths["sub"]) and not self.is_cache_valid(paths["sub_alive"]):
             from recon.engines import run_dnsx
             _run_with_progress("DNSX", lambda: run_dnsx(paths["sub"], paths["sub_alive"]))
             if os.path.exists(paths["sub_alive"]):
-                cnt = sum(1 for _ in open(paths["sub_alive"], 'r', errors='ignore'))
-                ui_log("DNSX", f"{cnt} hosts ativos.", Colors.SUCCESS)
+                active_count = sum(1 for _ in open(paths["sub_alive"], 'r', errors='ignore'))
+                ui_log("DNSX", f"{active_count} hosts ativos.", Colors.SUCCESS)
         else:
             ui_log("DNSX", "Cacheado (1h)", Colors.SUCCESS)
 
         if not os.path.exists(paths["sub_alive"]) or os.path.getsize(paths["sub_alive"]) == 0:
-            ui_log("ABORTADO", "Sem DNS ativo.", Colors.ERROR); return
+            ui_log("ABORTADO", "Sem DNS ativo.", Colors.ERROR)
+            return False
 
         from recon.engines import apply_sniper_filter
-        pf = f"{base_path}/subdomains_alive_clean.txt"
-        apply_sniper_filter(paths["sub_alive"], pf)
-        tgt = pf if (os.path.exists(pf) and os.path.getsize(pf) > 0) else paths["sub_alive"]
+        apply_sniper_filter(paths["sub_alive"], paths["target"])
+        return True
 
-        unc = f"{base_path}/uncover_urls.txt"
+    def _run_uncover_phase(self, domains, paths):
+        """Executa fase de descoberta com Uncover"""
+        unc = f"{os.path.dirname(paths['sub'])}/uncover_urls.txt"
         if self.is_cache_valid(unc):
             ui_log("UNCOVER", "Cacheado (1h)", Colors.SUCCESS)
         else:
             from recon.engines import run_uncover
-            _run_with_progress("Uncover", lambda: run_uncover(domains[0], unc, os.getenv("SHODAN_API_KEY"), os.getenv("CENSYS_API_ID"), os.getenv("CENSYS_API_SECRET")))
+            _run_with_progress("Uncover", lambda: run_uncover(domains[0], unc, 
+                os.getenv("SHODAN_API_KEY"), 
+                os.getenv("CENSYS_API_ID"), 
+                os.getenv("CENSYS_API_SECRET")))
+                
             if os.path.exists(unc):
-                cnt = sum(1 for _ in open(unc, 'r', errors='ignore'))
-                if cnt > 0:
-                    with open(unc, 'r') as u, open(tgt, 'a') as t:
-                        t.write("\n" + u.read())
-                    ui_log("UNCOVER", f"+{cnt} URLs mescladas.", Colors.PRIMARY)
+                url_count = sum(1 for _ in open(unc, 'r', errors='ignore'))
+                if url_count > 0:
+                    with open(unc, 'r') as src, open(paths["target"], 'a') as dst:
+                        dst.write("\n" + src.read())
+                    ui_log("UNCOVER", f"+{url_count} URLs mescladas.", Colors.PRIMARY)
                 else:
                     ui_log("UNCOVER", "Nenhum resultado.", Colors.DIM)
 
         try:
-            with open(tgt, 'r') as f:
-                all_t = [l.strip() for l in f if l.strip()]
-            total = len(all_t)
+            with open(paths["target"], 'r') as f:
+                targets = [line.strip() for line in f if line.strip()]
+            total_targets = len(targets)
         except Exception:
-            total = 0
+            total_targets = 0
 
-        if total == 0:
-            ui_log("ABORTADO", "Sem alvos validos.", Colors.ERROR); return
+        if total_targets == 0:
+            ui_log("ABORTADO", "Sem alvos validos.", Colors.ERROR)
+            return False
+
         if os.path.exists(paths["fin"]):
             open(paths["fin"], 'w').close()
             import glob
-            for f in glob.glob(f"{base_path}/*.shred_tmp_*"):
+            for f in glob.glob(f"{os.path.dirname(paths['fin'])}/*.shred_tmp_*"):
                 os.remove(f)
-            for f in glob.glob(f"{base_path}/*.dual_tmp*"):
+            for f in glob.glob(f"{os.path.dirname(paths['fin'])}/*.dual_tmp*"):
                 os.remove(f)
-            for f in glob.glob(f"{base_path}/.nuclei_stats*.log"):
+            for f in glob.glob(f"{os.path.dirname(paths['fin'])}/.nuclei_stats*.log"):
                 os.remove(f)
 
-        ui_log("MODE", f"Full-Scan ({total} subs)", Colors.INFO)
-        self._scan(tgt, paths, handle, score)
-
-        self._post_process(paths, handle, score)
-        self._save_diff_and_baseline(handle, paths)
+        ui_log("MODE", f"Full-Scan ({total_targets} subs)", Colors.INFO)
+        return True
 
     def _save_diff_and_baseline(self, handle, paths):
         """Compute diff against baseline and save new baseline."""

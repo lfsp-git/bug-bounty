@@ -27,8 +27,9 @@ def fetch_custom_templates():
     if not os.path.exists(pat_dir): return
     if os.path.exists(os.path.join(pat_dir, '.git')):
         try:
+            cmd = ['git', '-C', pat_dir, 'pull', '--quiet']
             subprocess.run(
-                ['git', '-C', pat_dir, 'pull', '--quiet'],
+                cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=30,

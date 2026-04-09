@@ -77,8 +77,9 @@ class ToolUpdater:
                 # Binario nao existe - tenta instalar
             install_cmd = ti.get('install_cmd','')
             if install_cmd:
-                # Use shell command as-is but through single array element to avoid injection
-                ok = self._run_silent([install_cmd], self.config.get('settings',{}).get('max_update_time',120))
+                # Split command safely using shlex
+                cmd_args = shlex.split(install_cmd)
+                ok = self._run_silent(cmd_args, self.config.get('settings',{}).get('max_update_time',120))
             else:
                 ok = False
             else:
