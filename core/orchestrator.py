@@ -519,6 +519,223 @@ class ProOrchestrator:
             return True
         except Exception: return False
 
+    def _run_deep_scan_phase(self, paths, js_findings, findings_tmp, base_path, stats_pipe):
+        """Executa varredura profunda em URLs suspeitas encontradas"""
+        from recon.engines import run_nuclei
+        
+        if not js_findings:
+            return
+
+        deep_urls = [
+            f['value'] for f in js_findings 
+            if f.get('type') == 'generic_url_param' or f.get('value', '').startswith('http')
+        ]
+        if not deep_urls:
+            return
+
+        unique_deep = list(set(deep_urls))
+        hot_urls = [u for u in unique_deep if self.intel.calculate_hot_score(u) > 3]
+        
+        history_file = "recon/deep_history.txt"
+        history = set()
+        if os.path.exists(history_file):
+            with open(history_file, 'r') as hf:
+                history = {l.strip() for l in hf if l.strip()}
+        
+        new_urls = [u for u in hot_urls if u not in history]
+        ignored_count = len(unique_deep) - len(new_urls)
+
+        if not new_urls:
+            return
+
+        ui_log("RECURSIVIDADE", 
+            f"Injetando {len(new_urls)} alvos de alta prioridade (Ineditos) ignorando {ignored_count} ruidos/repetidos.", 
+            Colors.WARNING
+        )
+        
+        deep_input = f"{base_path}/.deep_scan_input.txt"
+        deep_findings = f"{findings_tmp}_deep"
+        
+        with open(deep_input, 'w') as f:
+            f.write('\n'.join(new_urls))
+    
+        label_deep = "Nuclei Deep"
+        templates = "-t http/exposed-panels,http/vulnerabilities,http/misconfiguration -jsonl -silent -stats -sj -si 5 -max-host-error 100 -c 50 -bs 10 -rl 300 -t"
+        
+        _run_with_progress(
+            label_deep, 
+            lambda: run_nuclei(deep_input, deep_findings, "", stats_pipe, templates), 
+            live_tail_pipe=stats_pipe
+        )
+        
+        with open(history_file, 'a') as hf:
+            hf.write('\n'.join(new_urls) + '\n')
+
+        if os.path.exists(deep_findings) and os.path.getsize(deep_findings) > 0:
+            with open(deep_findings, 'r') as src, open(findings_tmp, 'a') as dst:
+                for line in src:
+                    try:
+                        d = json.loads(line)
+                        d["_deep_scan"] = True
+                        dst.write(json.dumps(d) + '\n')
+                    except Exception:
+                        dst.write(line)
+        
+        try:
+            os.remove(deep_input)
+            os.remove(deep_findings)
+        except Exception:
+            pass
+
+    def _run_vulnerability_phase(self, paths, handle, score):
+        """Executa varredura de vulnerabilidades com Nuclei"""
+        from recon.engines import run_nuclei
+        from core.template_manager import update_nuclei_templates
+
+        fp = paths["end"] + ".filtered"
+        ns = fp if self._smart_filter(paths["end"], fp) else paths["end"]
+
+        label_nuclei = "Nuclei"
+        ui_update_status(label_nuclei, "Iniciando varredura...", Colors.ERROR)
+
+        tech_tags = self.intel.select_surgical_arsenal(paths["htt"], score)
+        tech_only = set(tech_tags.split(',')) if tech_tags else set()
+        infra_base = tech_only - {'exposure', 'takeover'}
+        INFRA_FALLBACK = {'cve', 'takeover', 'exposure', 'default-logins', 'misconfig'}
+        infra_tags = infra_base | INFRA_FALLBACK
+
+        update_nuclei_templates()
+
+        _base = os.path.dirname(paths["htt"])
+        stats_pipe = f"{_base}/.nuclei_stats.log"
+        findings_tmp = f"{paths['fin']}.dual_tmp"
+        
+        if os.path.exists(findings_tmp):
+            open(findings_tmp, 'w').close()
+
+        # Fase 1: Nuclei Infra
+        infra_tags_str = ','.join(infra_tags)
+        ui_log("NUCLEI", f"Fase 1: Infra '{infra_tags_str}' em {paths['htt']}", Colors.INFO)
+        label_infra = "Nuclei Infra"
+        infra_findings = f"{findings_tmp}_infra"
+        _run_with_progress(
+            label_infra, 
+            lambda: run_nuclei(
+                paths["htt"], 
+                infra_findings, 
+                infra_tags_str, 
+                stats_pipe, 
+                "-jsonl -silent -stats -sj -si 5 -max-host-error 100 -c 50 -bs 10 -rl 300"
+            ), 
+            live_tail_pipe=stats_pipe
+        )
+
+        if os.path.exists(infra_findings) and os.path.getsize(infra_findings) > 0:
+            with open(infra_findings, 'r') as src, open(findings_tmp, 'a') as dst:
+                dst.write(src.read())
+            infra_count = sum(1 for _ in open(infra_findings, 'r'))
+            status = Colors.SUCCESS if infra_count > 0 else Colors.DIM
+            ui_log("NUCLEI INFRA", f"{infra_count} findings.", status)
+        
+        try:
+            os.remove(infra_findings)
+        except Exception:
+            pass
+
+        # Fase 2: Nuclei Endpoints
+        if os.path.exists(ns) and os.path.getsize(ns) > 0:
+            inj_tags_str = "xss,sqli,ssrf,lfi,dast,fuzzing"
+            ep_count = sum(1 for _ in open(ns, 'r'))
+            ANTI_TARPIT = "-timeout 5 -retries 1 -jsonl -silent -stats -sj -si 5 -max-host-error 100 -c 50 -bs 10 -rl 300 -timeout 10"
+            ui_log("NUCLEI", f"Fase 2: Injection '{inj_tags_str}' em {ep_count} endpoints", Colors.INFO)
+            label_endp = "Nuclei Endp"
+            endp_findings = f"{findings_tmp}_endp"
+            _run_with_progress(
+                label_endp, 
+                lambda: run_nuclei(ns, endp_findings, inj_tags_str, stats_pipe, ANTI_TARPIT), 
+                live_tail_pipe=stats_pipe
+            )
+
+            if os.path.exists(endp_findings) and os.path.getsize(endp_findings) > 0:
+                with open(endp_findings, 'r') as src, open(findings_tmp, 'a') as dst:
+                    dst.write(src.read())
+                endp_count = sum(1 for _ in open(endp_findings, 'r'))
+                status = Colors.SUCCESS if endp_count > 0 else Colors.DIM
+                ui_log("NUCLEI ENDP", f"{endp_count} findings.", status)
+            
+            try:
+                os.remove(endp_findings)
+            except Exception:
+                pass
+
+        if os.path.exists(findings_tmp):
+            os.replace(findings_tmp, paths["fin"])
+        
+        count = sum(1 for _ in open(paths["fin"], 'r', errors='ignore')) if os.path.exists(paths["fin"]) else 0
+        ui_log("NUCLEI", f"{count} findings.", Colors.SUCCESS if count > 0 else Colors.WARNING)
+        
+        return True
+
+    def _run_js_secrets_phase(self, paths, score):
+        """Executa busca por segredos em arquivos JavaScript"""
+        if "js" not in paths:
+            return []
+            
+        from recon.js_hunter import JSHunter
+        ui_update_status("JS HUNTER", "Procurando segredos em .js...", Colors.SECONDARY)
+        
+        js_findings, js_scanned = JSHunter.scan_all(paths["end"], paths["js"], score)
+        
+        if js_scanned > 0:
+            found = len(js_findings)
+            status = Colors.SUCCESS if found > 0 else Colors.DIM
+            ui_log("JS HUNTER", f"{js_scanned} arquivos escaneados, {found} segredos encontrados.", status)
+        
+        return js_findings
+
+    def _run_crawl_phase(self, paths, score):
+        """Executa crawling com Katana e filtra resultados"""
+        from recon.engines import run_katana_surgical
+        
+        label_katana = "Katana"
+        ui_update_status(label_katana, "Crawling ativo...", Colors.WARNING)
+        _run_with_progress(label_katana, 
+            lambda: run_katana_surgical(
+                paths["htt_urls"], 
+                paths["end"], 
+                score, 
+                "-headless -concurrency 5 -crawl-duration 10m"
+            ), 
+            Colors.WARNING
+        )
+        
+        if not os.path.exists(paths["end"]) or os.path.getsize(paths["end"]) == 0:
+            ui_log("KATANA", "Nenhuma URL coletada.", Colors.WARNING)
+            return False
+
+        count = sum(1 for _ in open(paths["end"], 'r', errors='ignore'))
+        ui_log("KATANA", f"{count} URLs coletadas.", Colors.SUCCESS)
+
+        # Filtro de endpoints
+        try:
+            with open(paths['end'], 'r') as f: 
+                eps = f.readlines()
+            cl = set()
+            for ep in eps:
+                ep = ep.strip()
+                if not ep or ep.endswith('.js'): continue
+                if '?page=' in ep or '&page=' in ep: 
+                    cl.add(ep.split('?')[0])
+                    continue
+                if ep.count('&') > 5: continue
+                cl.add(ep)
+            with open(paths['end'], 'w') as f: 
+                f.write('\n'.join(sorted(cl)))
+        except Exception as e:
+            logging.error(f"Erro ao filtrar endpoints: {e}")
+        
+        return True
+
     def _scan(self, inp, paths, handle, score=0):
         from recon.engines import run_httpx, run_katana_surgical, run_nuclei
 
@@ -546,40 +763,13 @@ class ProOrchestrator:
 
         if not os.path.exists(paths["htt_urls"]) or os.path.getsize(paths["htt_urls"]) == 0: return
 
-        label_katana = "Katana"
-        ui_update_status(label_katana, "Crawling ativo...", Colors.WARNING)
-        _run_with_progress(label_katana, lambda: run_katana_surgical(paths["htt_urls"], paths["end"], score, "-headless -concurrency 5 -crawl-duration 10m"), Colors.WARNING)
-        count = sum(1 for _ in open(paths["end"], 'r', errors='ignore')) if os.path.exists(paths["end"]) else 0
-        ui_log("KATANA", f"{count} URLs coletadas.", Colors.SUCCESS)
+        if not self._run_crawl_phase(paths, score):
+            return
 
-        if os.path.exists(paths["end"]) and os.path.getsize(paths["end"]) > 0:
-            try:
-                with open(paths['end'], 'r') as f: eps = f.readlines()
-                cl = set()
-                for ep in eps:
-                    ep = ep.strip()
-                    if not ep or ep.endswith('.js'): continue
-                    if '?page=' in ep or '&page=' in ep: cl.add(ep.split('?')[0]); continue
-                    if ep.count('&') > 5: continue
-                    cl.add(ep)
-                with open(paths['end'], 'w') as f: f.write('\n'.join(sorted(cl)))
-            except Exception: pass
+        js_findings = self._run_js_secrets_phase(paths, score)
 
-        js_findings = []
-        if "js" in paths:
-            from recon.js_hunter import JSHunter
-            ui_update_status("JS HUNTER", "Procurando segredos em .js...", Colors.SECONDARY)
-            katana_file = paths["end"]
-            js_findings, js_scanned = JSHunter.scan_all(katana_file, paths["js"], score)
-            if js_scanned > 0:
-                found = len(js_findings)
-                ui_log("JS HUNTER", f"{js_scanned} arquivos escaneados, {found} segredos encontrados.", Colors.SUCCESS if found > 0 else Colors.DIM)
-
-        fp = paths["end"] + ".filtered"
-        ns = fp if self._smart_filter(paths["end"], fp) else paths["end"]
-
-        label_nuclei = "Nuclei"
-        ui_update_status(label_nuclei, "Iniciando varredura...", Colors.ERROR)
+        if not self._run_vulnerability_phase(paths, handle, score):
+            return
         try:
             tech_tags = self.intel.select_surgical_arsenal(paths["htt"], score)
             tech_only = set(tech_tags.split(',')) if tech_tags else set()
@@ -630,49 +820,7 @@ class ProOrchestrator:
                     os.remove(endp_findings)
                 except Exception: pass
 
-            # === FASE 3: Deep Scan ===
-            deep_urls = [f['value'] for f in js_findings if f.get('type') == 'generic_url_param' or f.get('value', '').startswith('http')]
-            if deep_urls:
-                unique_deep = list(set(deep_urls))
-                hot_urls = [u for u in unique_deep if self.intel.calculate_hot_score(u) > 3]
-                
-                history_file = "recon/deep_history.txt"
-                history = set()
-                if os.path.exists(history_file):
-                    with open(history_file, 'r') as hf:
-                        history = {l.strip() for l in hf if l.strip()}
-                
-                new_urls = [u for u in hot_urls if u not in history]
-                ignored_count = len(unique_deep) - len(new_urls)
-
-                if new_urls:
-                    ui_log("RECURSIVIDADE", f"Injetando {len(new_urls)} alvos de alta prioridade (Ineditos) ignorando {ignored_count} ruidos/repetidos.", Colors.WARNING)
-                    
-                    deep_input = f"{_base}/.deep_scan_input.txt"
-                    deep_findings = f"{findings_tmp}_deep"
-                    with open(deep_input, 'w') as f:
-                        f.write('\n'.join(new_urls))
-                
-                    label_deep = "Nuclei Deep"
-                    templates = "-t http/exposed-panels,http/vulnerabilities,http/misconfiguration -jsonl -silent -stats -sj -si 5 -max-host-error 100 -c 50 -bs 10 -rl 300 -t"
-                    _run_with_progress(label_deep, lambda: run_nuclei(deep_input, deep_findings, "", stats_pipe, templates), live_tail_pipe=stats_pipe)
-                    
-                    with open(history_file, 'a') as hf:
-                        hf.write('\n'.join(new_urls) + '\n')
-
-                    if os.path.exists(deep_findings) and os.path.getsize(deep_findings) > 0:
-                        with open(deep_findings, 'r') as src, open(findings_tmp, 'a') as dst:
-                            for line in src:
-                                try:
-                                    d = json.loads(line)
-                                    d["_deep_scan"] = True
-                                    dst.write(json.dumps(d) + '\n')
-                                except Exception:
-                                    dst.write(line)
-                    try:
-                        os.remove(deep_input)
-                        os.remove(deep_findings)
-                    except Exception: pass
+            self._run_deep_scan_phase(paths, js_findings, findings_tmp, _base, stats_pipe)
 
             if os.path.exists(findings_tmp):
                 os.replace(findings_tmp, paths["fin"])
