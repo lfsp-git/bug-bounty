@@ -254,33 +254,30 @@ class MissionRunner:
                     
                     try:
                         vuln = json.loads(line)
-                        template_id = vuln.get('template-id', '').lower()
-                        host = vuln.get('host', '')
-                        
-                        # Only validate critical/high findings
-                        is_critical = any(keyword in template_id for keyword in critical_keywords)
-                        
-                        if is_critical:
-                            prompt = f"""Analyze: Is this a real vulnerability?
+                    except json.JSONDecodeError as e:
+                        logging.warning(f"Skipping malformed JSONL in {findings_file}: {e}")
+                        continue
+                    
+                    template_id = vuln.get('template-id', '').lower()
+                    host = vuln.get('host', '')
+                    
+                    # Only validate critical/high findings
+                    is_critical = any(keyword in template_id for keyword in critical_keywords)
+                    
+                    if is_critical:
+                        prompt = f"""Analyze: Is this a real vulnerability?
                             
 Target: {host}
 Template: {template_id}
 Respond only: VALID or INVALID"""
-                            response = ai_client.complete(prompt, max_tokens=10)
-                            
-                            if 'VALID' in response.upper():
-                                validated_findings.append(line)
-                            else:
-                                ui_log("AI VALIDATION", f"Rejected: {host} ({template_id})", Colors.WARNING)
-                        else:
+                        response = ai_client.complete(prompt, max_tokens=10)
+                        
+                        if 'VALID' in response.upper():
                             validated_findings.append(line)
-                    
-                    except json.JSONDecodeError:
-                        ui_log("AI VALIDATION", f"Malformed JSON line, skipping", Colors.WARNING)
-                        continue
-                    except Exception as e:
-                        ui_log("AI VALIDATION", f"Error: {str(e)[:40]}", Colors.ERROR)
-                        validated_findings.append(line)  # Fallback: keep finding
+                        else:
+                            ui_log("AI VALIDATION", f"Rejected: {host} ({template_id})", Colors.WARNING)
+                    else:
+                        validated_findings.append(line)
             
             # Rewrite file with validated findings
             with open(findings_file, 'w', encoding='utf-8') as f:
