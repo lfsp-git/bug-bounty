@@ -75,8 +75,8 @@ class ToolUpdater:
             bin_path = os.path.join(self.pdtm, ti.get('binary',''))
             if not os.path.exists(bin_path):
                 # Binario nao existe - tenta instalar
-            install_cmd = ti.get('install_cmd','')
-            if install_cmd:
+                install_cmd = ti.get('install_cmd','')
+                if install_cmd:
                 # Split command safely using shlex
                 cmd_args = shlex.split(install_cmd)
                 ok = self._run_silent(cmd_args, self.config.get('settings',{}).get('max_update_time',120))
