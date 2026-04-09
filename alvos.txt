@@ -1,0 +1,4 @@
+# Formato: dominio|score|descricao (opcional)
+# 1win.com|55|iGaming - Bounty até $3000
+# exemplo.com|40|Alvo de teste
+# 192.168.1.1|30|IP para teste interno

@@ -1,0 +1,9 @@
+requests
+colorama
+python-dotenv
+openai
+psutil
+httpx
+pydantic
+pydantic-settings
+tldextract

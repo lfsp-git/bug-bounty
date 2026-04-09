@@ -1,0 +1,36 @@
+platforms:
+  hackerone:
+    name: "HackerOne"
+    enabled: true
+    env_vars:
+      username: "HACKERONE_USERNAME"
+      api_token: "HACKERONE_API_TOKEN"
+    base_url: "https://api.hackerone.com/v1"
+    
+  google:
+    name: "Google Bug Hunters"
+    enabled: false
+    env_vars:
+      api_key: "GOOGLE_BUG_HUNTERS_KEY"
+    base_url: "https://bughunters.google.com"
+    
+  bugcrowd:
+    name: "BugCrowd"
+    enabled: false
+    env_vars:
+      api_token: "BUGCROWD_API_TOKEN"
+    base_url: "https://api.bugcrowd.com"
+
+  yeswehack:
+    name: "YesWeHack"
+    enabled: false
+    env_vars:
+      api_token: "YESWEHACK_API_TOKEN"
+    base_url: "https://api.yeswehack.com"
+    
+  intigritis:
+    name: "Intigritis"
+    enabled: false
+    env_vars:
+      api_token: "INTIGRITIS_API_TOKEN"
+    base_url: "https://app.intigriti.com"

@@ -1,0 +1,5 @@
+COMANDOS ESSENCIAIS DE PILOTO
+Sair sem matar (Detach): Ctrl + B depois D
+Listar sessões: tmux ls
+Matar uma sessão (se quiser parar tudo): tmux kill-session -t coinbase_op
+Trocar entre sessões (se tiver rodando 2 alvos ao mesmo tempo): Ctrl + B depois S (depois setas para escolher).

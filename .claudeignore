@@ -1,0 +1,7 @@
+recon/baselines/
+recon/db/
+*.txt
+*.json
+*.sqlite
+logs/
+.env

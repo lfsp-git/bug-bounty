@@ -1,0 +1,36 @@
+tools:
+  subfinder:
+    name: "Subfinder"
+    binary: "subfinder"
+    install_cmd: "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
+  dnsx:
+    name: "DNSX"
+    binary: "dnsx"
+    install_cmd: "go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest"
+  httpx:
+    name: "HTTPX"
+    binary: "httpx"
+    install_cmd: "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"
+  katana:
+    name: "Katana"
+    binary: "katana"
+    install_cmd: "go install -v github.com/projectdiscovery/katana/cmd/katana@latest"
+  nuclei:
+    name: "Nuclei"
+    binary: "nuclei"
+    install_cmd: "go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"
+    templates_repo: "https://github.com/projectdiscovery/nuclei-templates"
+    templates_dir: "~/nuclei-templates"
+
+custom_templates:
+  payloads_all_the_things:
+    name: "PayloadAllTheThings"
+    repo: "https://github.com/swisskyrepo/PayloadsAllTheThings"
+    local_dir: "recon/custom_templates/payloadsallthethings"
+    enabled: true
+
+settings:
+  auto_update_on_start: true
+  update_check_hours: 24
+  verbose_updates: false
+  max_update_time: 120

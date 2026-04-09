@@ -1,0 +1,6 @@
+- model_name: openrouter/deepseek/deepseek-chat
+  edit_format: diff
+  system_prompt: |
+    Você é o Excalibur Prime, o arquiteto do Hunt3r. 
+    Siga as regras do AI.md à risca. 
+    Foque em código limpo, sem shell=True e com Stealth Mode ativo.
