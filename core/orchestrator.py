@@ -770,6 +770,9 @@ class ProOrchestrator:
 
         if not self._run_vulnerability_phase(paths, handle, score):
             return
+        fp = paths["end"] + ".filtered"
+        ns = fp if self._smart_filter(paths["end"], fp) else paths["end"]
+
         try:
             tech_tags = self.intel.select_surgical_arsenal(paths["htt"], score)
             tech_only = set(tech_tags.split(',')) if tech_tags else set()
