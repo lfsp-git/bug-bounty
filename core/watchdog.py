@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import shlex
 from datetime import datetime, timedelta
+from core.dedup import to_set  # Unified deduplication
 
 # Adiciona os caminhos de binários ao PATH
 home = os.path.expanduser("~")
@@ -81,7 +82,7 @@ def _fetch_global_wildcards():
     bc_t_safe = shlex.quote(bc_t) if bc_t else ""
     it_t_safe = shlex.quote(it_t) if it_t else ""
 
-    all_raw = set()
+    all_raw = to_set([])  # Start with empty deduplicated set
     threads = []
     lock = threading.Lock()
 
@@ -91,7 +92,7 @@ def _fetch_global_wildcards():
             if res.returncode == 0:
                 targets = [l.strip() for l in res.stdout.split('\n') if "*" in l]
                 with lock:
-                    all_raw.update(targets)
+                    all_raw.update(to_set(targets))  # Deduplicate on add
                 ui_log("WATCHDOG", f"{name.upper()} pronto ({len(targets)} alvos).", Colors.SUCCESS)
             else:
                 ui_log("WATCHDOG", f"Falha no {name.upper()}.", Colors.WARNING)
@@ -126,9 +127,11 @@ def _fetch_global_wildcards():
 
 def _process_raw_to_targets(raw_list):
     """Lógica auxiliar para limpar e rankear os wildcards brutos."""
-    history = set()
+    from core.dedup import to_set
+    history = to_set([])
     if os.path.exists(GLOBAL_TARGETS_HISTORY):
-        with open(GLOBAL_TARGETS_HISTORY, 'r') as f: history = {l.strip() for l in f}
+        with open(GLOBAL_TARGETS_HISTORY, 'r') as f: 
+            history = to_set(f.read().splitlines())
 
     valid_targets = []
     new_found = []
