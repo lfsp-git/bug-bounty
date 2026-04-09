@@ -38,7 +38,8 @@ def _load_tool_times() -> Dict[str, Any]:
     if os.path.exists(_CACHE_TIMES):
         try:
             with open(_CACHE_TIMES, 'r') as f: return json.load(f)
-        except: pass
+        except (json.JSONDecodeError, IOError) as e:
+            logging.warning(f"Failed to load tool times cache: {e}")
     return {}
 
 def _record_tool_time(label: str, elapsed: float):
@@ -50,7 +51,8 @@ def _record_tool_time(label: str, elapsed: float):
     data[key] = history[-5:]
     try:
         with open(_CACHE_TIMES, 'w') as f: json.dump(data, f)
-    except: pass
+    except (IOError, TypeError) as e:
+        logging.warning(f"Failed to save tool times: {e}")
 
 def _run_with_progress(label, fn, live_tail_pipe=None):
     start_time = time.time()
@@ -79,13 +81,15 @@ def _run_with_progress(label, fn, live_tail_pipe=None):
 def _count_lines(filepath):
     try:
         return sum(1 for _ in open(filepath, 'r', encoding='utf-8', errors='ignore'))
-    except:
+    except (FileNotFoundError, IOError) as e:
+        logging.debug(f"Cannot count lines in {filepath}: {e}")
         return 0
 
 def _count_findings(filepath):
     try:
         return sum(1 for _ in open(filepath, 'r', encoding='utf-8', errors='ignore'))
-    except:
+    except (FileNotFoundError, IOError) as e:
+        logging.debug(f"Cannot count findings in {filepath}: {e}")
         return 0
 
 class MissionRunner:
