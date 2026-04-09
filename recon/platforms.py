@@ -212,6 +212,9 @@ class PlatformManager:
 
 def load_custom_targets() -> List[Dict]:
     """Carrega alvos do alvos.txt usando parsing seguro de URL."""
+    from config.validators import validate_and_extract_domain
+    from core.ui_manager import ui_log, Colors
+    
     t = []
     filepath = "alvos.txt"
     if not os.path.exists(filepath): return []
@@ -222,18 +225,19 @@ def load_custom_targets() -> List[Dict]:
                 raw = l.strip()
                 if not raw or raw.startswith('#'): continue
                 
-                if not raw.startswith('http'): raw = f"https://{raw}"
-                parsed = urlparse(raw)
-                domain = parsed.hostname or ''
+                # Validate input
+                domain = validate_and_extract_domain(raw)
+                if not domain:
+                    ui_log("TARGETS", f"Pulando entrada invalida: {raw}", Colors.WARNING)
+                    continue
                 
-                if domain:
-                    safe_handle = sanitize_input(domain).replace('.', '_').replace('-', '_')
-                    t.append({
-                        'domain': domain, 
-                        'domains': [domain], 
-                        'handle': safe_handle, 
-                        'score': 30
-                    })
+                safe_handle = sanitize_input(domain).replace('.', '_').replace('-', '_')
+                t.append({
+                    'domain': domain, 
+                    'domains': [domain], 
+                    'handle': safe_handle, 
+                    'score': 30
+                })
         return t
     except Exception as e:
         ui_log("TARGETS ERR", f"Erro ao ler {filepath}: {e}", Colors.ERROR)

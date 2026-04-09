@@ -347,12 +347,22 @@ def ui_target_selection_list(ranked: list):
 
 def ui_manual_target_input() -> dict:
     """Prompt user for a manual target and return a dict suitable for orch.start_mission."""
+    from config.validators import validate_and_extract_domain
+    
     try:
         dom = input("  Dominio (ex: example.com): ").strip()
         if not dom: return {}
-        handle = dom.replace('.', '_').replace('-', '_')
-        return {'domains': [dom], 'handle': handle, 'score': 30}
-    except Exception:
+        
+        # Validate domain input
+        clean_domain = validate_and_extract_domain(dom)
+        if not clean_domain:
+            print(f"  {Colors.ERROR}Dominio invalido. Use formato: example.com ou https://example.com{Colors.RESET}")
+            return {}
+        
+        handle = clean_domain.replace('.', '_').replace('-', '_')
+        return {'domains': [clean_domain], 'handle': handle, 'score': 30}
+    except Exception as e:
+        logging.error(f"Manual target input error: {e}")
         return {}
 
 def ui_custom_targets_list(targets: list) -> dict:
