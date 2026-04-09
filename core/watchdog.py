@@ -153,12 +153,11 @@ def _process_raw_to_targets(raw_list):
             'score': 50
         })
     
-    # Write all new targets at once (optimization: batch I/O instead of per-target)
+    # Write all new targets at once (optimization: batch I/O with efficient string building)
     if new_found:
         os.makedirs(os.path.dirname(GLOBAL_TARGETS_HISTORY), exist_ok=True)
         with open(GLOBAL_TARGETS_HISTORY, 'a') as f:
-            for target in new_found:
-                f.write(target + "\n")
+            f.write('\n'.join(new_found) + '\n')
         ui_log("PREDADOR", f"{len(new_found)} NOVOS ALVOS DETECTADOS!", Colors.SUCCESS)
     
     return valid_targets[:MAX_TARGETS_PER_CYCLE]
