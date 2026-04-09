@@ -10,6 +10,8 @@ import time
 import logging
 from core.ui_manager import ui_log, Colors
 
+from typing import Any
+psutil: Any = None
 try:
     import psutil
     HAS_PSUTIL = True
@@ -23,7 +25,7 @@ class IntelMiner:
         self.max_subs = self._hw()
 
     def _hw(self):
-        if HAS_PSUTIL:
+        if HAS_PSUTIL and psutil is not None:
             mb = psutil.virtual_memory().available // (1024 * 1024)
             return 100 if mb < 3000 else (1000 if mb < 6000 else 2000)
         try:

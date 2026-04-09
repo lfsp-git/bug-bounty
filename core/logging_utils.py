@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 # Ensure logs directory exists
 LOGS_DIR = Path("logs")
@@ -58,7 +59,7 @@ def get_logger(name: str, level=logging.INFO) -> logging.Logger:
     return logger
 
 
-def log_subprocess_execution(logger: logging.Logger, command: list, timeout: int = None):
+def log_subprocess_execution(logger: logging.Logger, command: list, timeout: Optional[int] = None):
     """Log subprocess execution for debugging."""
     cmd_str = ' '.join(str(c) for c in command)
     if timeout:
@@ -68,7 +69,7 @@ def log_subprocess_execution(logger: logging.Logger, command: list, timeout: int
 
 
 def log_subprocess_result(logger: logging.Logger, command: list, returncode: int, 
-                          stderr: str = "", stdout_lines: int = 0):
+                          stderr: Optional[str] = None, stdout_lines: int = 0):
     """Log subprocess result."""
     cmd_str = ' '.join(str(c) for c in command[:3])  # Truncate for readability
     if returncode == 0:
@@ -78,8 +79,8 @@ def log_subprocess_result(logger: logging.Logger, command: list, returncode: int
         logger.error(f"✗ {cmd_str} failed (rc={returncode}): {error_msg}")
 
 
-def log_api_call(logger: logging.Logger, method: str, url: str, status_code: int = None,
-                 error: str = None):
+def log_api_call(logger: logging.Logger, method: str, url: str, status_code: Optional[int] = None,
+                 error: Optional[str] = None):
     """Log API calls securely (without exposing keys)."""
     # Sanitize URL - remove query params with potential keys
     sanitized_url = url.split('?')[0] if '?' in url else url

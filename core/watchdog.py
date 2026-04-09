@@ -52,7 +52,7 @@ def _fetch_global_wildcards():
     # 1. Lógica de Cache (Só gasta API e tempo uma vez a cada 12 horas)
     if os.path.exists(CACHE_FILE):
         mtime = os.path.getmtime(CACHE_FILE)
-        if (time.time() - mtime) < 43200: # 12 horas
+        if (time.time() - mtime) < 43600: # 12 horas
             ui_log("WATCHDOG", "Usando cache local de wildcards (Cache < 12h).", Colors.DIM)
             with open(CACHE_FILE, 'r') as f:
                 raw_list = [l.strip() for l in f if l.strip()]
@@ -135,17 +135,78 @@ def _process_raw_to_targets(raw_list):
     
     return valid_targets[:MAX_TARGETS_PER_CYCLE]
 
-def _scan_target(orch, target):
-    handle = target['handle']
-    ui_log("WATCHDOG", f"Iniciando Scan: {target['original_handle']}", Colors.PRIMARY)
-    orch.start_mission(handle, target['domains'], f"recon/db/{handle}", target['score'])
-    _cleanup_disk(handle)
+def _has_changes_since_last_scan(handle):
+    """Verifica se houve mudanças desde a última varredura."""
+    # Verifica se há baseline para esse handle
+    baseline_file = f"recon/baselines/{handle}_sub.txt"
+    if not os.path.exists(baseline_file):
+        return True  # Primeira varredura, processar
+    # Em produção, comparar com baselines atuais
+    # Por agora, processar todos
+    return True
+
+SCAN_HISTORY_FILE = "recon/baselines/target_scan_history.txt"
+
+def _should_process_target(handle):
+    """Decide se deve processar o alvo baseado em execuções anteriores."""
+    history_file = SCAN_HISTORY_FILE
+    os.makedirs(os.path.dirname(history_file), exist_ok=True)
+    
+    # Carrega histórico
+    history = {}
+    if os.path.exists(history_file):
+        with open(history_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    history[parts[0]] = (parts[1], parts[2] == 'True')
+    
+    # Verifica histórico desse handle
+    last_scan, has_changes = history.get(handle, (None, False))
+    now = time.time()
+    
+    # Se foi verificado nas últimas 24h e não houve mudanças, pular
+    if last_scan and not has_changes:
+        scan_time = time.mktime(time.strptime(last_scan, '%Y-%m-%d %H:%M:%S'))
+        if now - scan_time < 86400:  # 24 horas
+            return False
+    
+    return True
+
+def _record_scan_result(handle, has_changes):
+    """Registra o resultado da varredura no histórico."""
+    history_file = SCAN_HISTORY_FILE
+    os.makedirs(os.path.dirname(history_file), exist_ok=True)
+    
+    # Lê histórico existente
+    history = {}
+    if os.path.exists(history_file):
+        with open(history_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    history[parts[0]] = (parts[1], parts[2] == 'True')
+    
+    # Atualiza entrada
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+    history[handle] = (now, has_changes)
+    
+    # Salva
+    with open(history_file, 'w') as f:
+        for handle, (timestamp, changed) in history.items():
+            f.write(f"{handle},{timestamp},{changed}\n")
+    return results
 
 def run_watchdog():
     ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo.", Colors.SUCCESS)
     while True:
-        # Removida a chamada antiga de ui_live_view_start()
-        ui_clear_and_banner() # Chama o novo banner aqui
+        ui_clear_and_banner()  # Chama o novo banner aqui
         ts = datetime.now().strftime('%H:%M')
         ui_log("WATCHDOG", f"=== CICLO {ts} ===", Colors.BOLD)
         wildcards = _fetch_global_wildcards()
@@ -156,17 +217,32 @@ def run_watchdog():
             orch = ProOrchestrator(IntelMiner(AIClient()))
             for t in wildcards:
                 try:
-                    _scan_target(orch, t)
+                    handle = t['handle']
+                    # Decide se deve processar
+                    if _should_process_target(handle):
+                        ui_log("WATCHDOG", f"Processando: {t['original_handle']}", Colors.PRIMARY)
+                        results = _scan_target(orch, t)
+                        # Verifica se houve mudanças (assumindo que results contém 'has_changes')
+                        has_changes = results.get('has_changes', False) if isinstance(results, dict) else False
+                        _record_scan_result(handle, has_changes)
+                    else:
+                        ui_log("WATCHDOG", f"Pulando (histórico recente): {t['original_handle']}", Colors.DIM)
                 except KeyboardInterrupt:
                     ui_log("WATCHDOG", "Interrupção recebida. Encerrando o Watchdog...", Colors.WARNING)
-                    # Removida a chamada antiga de ui_live_view_stop()
-                    sys.exit(0) # Encerra o script
+                    return
                 except Exception as e:
-                    ui_log("ERR", f"Erro em {t['original_handle']}: {e}", Colors.ERROR)
-        
-        secs = random.randint(SLEEP_MIN, SLEEP_MAX)
-        ui_log("WATCHDOG", f"Dormindo até {(datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')}", Colors.DIM)
-        time.sleep(secs)
+                    ui_log("ERR", f"Erro em {t.get('original_handle', 'unknown')}: {e}", Colors.ERROR)
+
+            secs = random.randint(SLEEP_MIN, SLEEP_MAX)
+            ui_log("WATCHDOG", f"Dormindo até {(datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')}", Colors.DIM)
+            try:
+                time.sleep(secs)
+            except KeyboardInterrupt:
+                ui_log("WATCHDOG", "Interrupção recebida durante sleep. Encerrando...", Colors.WARNING)
+                return
 
 if __name__ == "__main__":
-    run_watchdog()
+    try:
+        run_watchdog()
+    except KeyboardInterrupt:
+        ui_log("WATCHDOG", "Interrupção recebida (main). Encerrando...", Colors.WARNING)

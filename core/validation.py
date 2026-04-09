@@ -243,7 +243,9 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
-def validate_positive_int(value: str, min_val: int = 0, max_val: int = None) -> int:
+from typing import Optional as _Optional
+
+def validate_positive_int(value: str, min_val: int = 0, max_val: _Optional[int] = None) -> int:
     """
     Validate and convert string to positive integer.
     

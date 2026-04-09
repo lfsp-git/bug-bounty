@@ -1,25 +1,35 @@
 """
-HUNT3R v2.4 - UI Manager [UX/UI PREDADOR - EDITION]
+HUNT3R v2.5 - UI Manager [UX/UI PREDADOR - EDITION]
 """
 
 import os
-os.makedirs("logs", exist_ok=True) # Garante que a pasta existe
-
-import logging
 import sys
+import time
 import re
 from datetime import datetime
+import threading
+import logging
+from collections import defaultdict
+from typing import Any
 
 # Importar colorama com fallback estruturado
+from typing import Any
+HAS_COLORAMA = False
+Fore: Any = None
+Style: Any = None
 try:
-    from colorama import Fore, Style, init as colorama_init
+    from colorama import Fore as _Fore, Style as _Style, init as colorama_init
     colorama_init(autoreset=True)
+    Fore = _Fore
+    Style = _Style
     HAS_COLORAMA = True
 except ImportError:
-    class Fore:
+    class AnsiFore:
         RED = ''; GREEN = ''; YELLOW = ''; CYAN = ''; MAGENTA = ''; WHITE = ''; BLACK = ''
-    class Style:
+    class AnsiStyle:
         RESET_ALL = ''; BRIGHT = ''; DIM = ''
+    Fore = AnsiFore
+    Style = AnsiStyle
 
 # Logging APENAS EM ARQUIVO (Para não poluir a tela de caçada)
 logging.basicConfig(
@@ -97,24 +107,125 @@ def ui_update_status(step: str, detail: str, color=Colors.PRIMARY):
     icon = ICONS.get(step.upper(), "[*]")
     print(f"\r\033[K{color}{icon} {step} {detail}{Colors.RESET}")
 
+def ui_clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def ui_banner():
+    b_art = (
+        "  ::   .:   ...    ::::::.    :::.:::::::::::: .::.   :::::::..   \n"
+        " ,;;   ;;,  ;;     ;;;`;;;;,  `;;;;;;;;;;;'''';'`';;, ;;;;``;;;;  \n"
+        ",[[[,,,[[[ [['     [[[  [[[[[. '[[     [[        .n[[  [[[,/[[['  \n"
+        "\"$$$\"\"\"$$$ $$      $$$  $$$ \"Y$c$$     $$       ``\"$$$.$$$$$$c    \n"
+        " 888   \"88o88    .d888  888    Y88     88,      ,,o888\"888b \"88bo,\n"
+        " MMM    YMM \"YmmMMMM\"\"  MMM     YM     MMM      YMMP\"  MMMM   \"W\" \n"
+    )
+    print(f"{Colors.PRIMARY}{b_art}{Colors.RESET}")
+    print(f"    {Colors.DIM}v2.5 - PREDATOR TACTICAL VIEW{Colors.RESET}\n")
+
+def ui_clear_and_banner():
+    """Clear screen and show banner (used by mission header)."""
+    ui_clear()
+    ui_banner()
+
+# ---------------------------------------------------------------------------
+# Live View System (Htop-style)
+# ---------------------------------------------------------------------------
+# Estado global do live view
+_live_view_active = False
+_live_view_thread = None
+_live_view_data = {
+    "Subfinder": {"status": "idle", "progress": 0, "subs": 0},
+    "DNSX": {"status": "idle", "progress": 0, "live": 0},
+    "Uncover": {"status": "idle", "progress": 0, "takeovers": 0},
+    "HTTPX": {"status": "idle", "progress": 0, "endpoints": 0},
+    "JS Hunter": {"status": "idle", "progress": 0, "secrets": 0},
+    "Katana": {"status": "idle", "progress": 0, "crawled": 0},
+    "Nuclei": {"status": "idle", "progress": 0, "vulns": 0},
+}
+_live_view_lock = threading.Lock()
+
+def _start_live_view():
+    """Inicia o live view em uma thread separada."""
+    global _live_view_active, _live_view_thread
+    _live_view_active = True
+    _live_view_thread = threading.Thread(target=_live_view_loop, daemon=True)
+    _live_view_thread.start()
+
+def _stop_live_view():
+    """Para o live view."""
+    global _live_view_active
+    _live_view_active = False
+    if _live_view_thread:
+        _live_view_thread.join(timeout=1)
+
+def _live_view_loop():
+    """Loop principal do live view."""
+    while _live_view_active:
+        _render_live_view()
+        time.sleep(0.5)
+
+def _render_live_view():
+    """Renderiza o live view na tela."""
+    with _live_view_lock:
+        # Posiciona no topo da área do live view (linha 5)
+        print("\033[5;1H", end="")  # Move para linha 5, coluna 1
+        
+        # Cabeçalho do live view
+        print(f"\r\033[K  {Colors.BOLD}LIVE VIEW - TOOL STATUS{Colors.RESET}")
+        print(f"\r\033[K  {'─'*56}")
+        
+        # Exibe cada ferramenta
+        for tool, data in _live_view_data.items():
+            status_icon = "🟢" if data["status"] == "running" else "🟡" if data["status"] == "idle" else "🔴"
+            progress_bar = "█" * int(data["progress"] * 20) + "░" * (20 - int(data["progress"] * 20))
+            print(f"\r\033[K  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {data.get('count', 0):<6}")
+        
+        # Linha de separação
+        print(f"\r\033[K  {'─'*56}")
+        
+        # Stats gerais
+        total_subs = sum(d.get('subs', 0) for d in _live_view_data.values())
+        total_live = sum(d.get('live', 0) for d in _live_view_data.values())
+        total_endpoints = sum(d.get('endpoints', 0) for d in _live_view_data.values())
+        total_vulns = sum(d.get('vulns', 0) for d in _live_view_data.values())
+        
+        print(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}")
+        print(f"\r\033[K  {'─'*56}")
+        
+        # Exibe cada ferramenta
+        for tool, data in _live_view_data.items():
+            status_icon = "🟢" if data["status"] == "running" else "🟡" if data["status"] == "idle" else "🔴"
+            progress_bar = "█" * int(data["progress"] * 20) + "░" * (20 - int(data["progress"] * 20))
+            print(f"\r\033[K  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {data.get('count', 0):<6}")
+        
+        # Linha de separação
+        print(f"\r\033[K  {'─'*56}")
+        
+        # Stats gerais
+        total_subs = sum(d.get('subs', 0) for d in _live_view_data.values())
+        total_live = sum(d.get('live', 0) for d in _live_view_data.values())
+        total_endpoints = sum(d.get('endpoints', 0) for d in _live_view_data.values())
+        total_vulns = sum(d.get('vulns', 0) for d in _live_view_data.values())
+        
+        print(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}")
+        print(f"\r\033[K  {'─'*56}")
+
 def ui_mission_header(handle: str, score: int = 0):
     global _MISSION_START_TIME
     _MISSION_START_TIME = datetime.now()
-    
-    ui_clear_and_banner() # Chama o novo banner aqui
+
+    ui_clear_and_banner()  # Limpa tela e mostra banner
 
     # Limpa o handle: *TEST-ESCALATIONS_VINTEDGO_COM -> TEST-ESCALATIONS.VINTEDGO.COM
     clean_handle = handle.replace('_', '.').replace('*', '').upper()
-    
+
     print(f"\n\r\033[K  ┌{'─'*56}┐")
     print(f"\r\033[K  │  TARGET  {Colors.BOLD}{clean_handle:<46}{Colors.RESET}│")
-    
-    score_c = Colors.SUCCESS if score >= 70 else Colors.WARNING if score >= 40 else Colors.DIM
-    rank = "CRITICAL" if score >= 80 else "HIGH" if score >= 60 else "STANDARD"
-    score_str = f"{score}% - {rank}"
-    
-    print(f"\r\033[K  │  SCORE   {score_c}{score_str:<46}{Colors.RESET}│")
+    print(f"\r\033[K  │  SCORE   {Colors.SUCCESS if score >= 70 else Colors.WARNING if score >= 40 else Colors.DIM}{score:<46}{Colors.RESET}│")
     print(f"\r\033[K  └{'─'*56}┘\n")
+
+    # Inicia o live view
+    _start_live_view()
 
 def ui_scan_summary(results: dict):
     global _MISSION_START_TIME
@@ -146,6 +257,13 @@ def ui_scan_summary(results: dict):
     print(f"\r\033[K  ☢️ Vulns: {v_color}{v_text}{Colors.RESET}")
     
     print(f"\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}\n")
+
+def ui_mission_footer():
+    """Finaliza a missão, parando o live view e limpando a tela."""
+    _stop_live_view()
+    # Limpa a área do live view, mas mantém o último estado visível por um momento
+    time.sleep(1)
+    print("\033[2J\033[H", end="")  # Limpa a tela e move para o canto superior esquerdo
 
 def ui_ranking_board(top_targets: list):
     print(f"\n\r\033[K  {Colors.BOLD}RANKING DE ALVOS (TOP {len(top_targets)}){Colors.RESET}")
@@ -183,70 +301,51 @@ def ui_model_selection_menu(models: list) -> str:
     print(f"\n\r\033[K  {'─'*56}")
     return input(f"\r\033[K  {Colors.BOLD}Selecione o modelo (1-{len(models)}): {Colors.RESET}").strip()
 
-# ---------------------------------------------------------------------------
-# CLI Menu & Utilities (Reintegrados para o main.py)
-# ---------------------------------------------------------------------------
+def ui_platform_selection_menu(platforms: list) -> str:
+    """Present a list of platform names and return the selected platform name (lowercased)."""
+    if not platforms: return ''
+    print("\n  Plataformas disponíveis:")
+    for i, p in enumerate(platforms, 1):
+        name = p.get('name', str(p))
+        print(f"   [{i}] {name}")
+    try:
+        sel = int(input(f"  Selecione (1-{len(platforms)}): ").strip())
+        if 1 <= sel <= len(platforms):
+            return platforms[sel-1].get('name')
+    except Exception:
+        pass
+    return ''
 
-def ui_clear():
-    os.system('cls' if os.name == 'nt' else 'clear')
+def ui_target_selection_list(ranked: list):
+    """Prints ranked targets succinctly for user selection."""
+    if not ranked: print("  (Nenhum alvo)"); return
+    for i, t in enumerate(ranked, 1):
+        handle = t.get('handle', 'unknown')
+        score = t.get('score', 0)
+        print(f"  [{i}] {handle} (score: {score})")
 
-def ui_clear_and_banner():
-    """Limpa a tela e exibe o banner principal."""
-    print("\033[2J\033[H", end="")
-    b_art = (
-        "  ::   .:   ...    ::::::.    :::.:::::::::::: .::.   :::::::..   \n"
-        " ,;;   ;;,  ;;     ;;;`;;;;,  `;;;;;;;;;;;'''';'`';;, ;;;;``;;;;  \n"
-        ",[[[,,,[[[ [['     [[[  [[[[[. '[[     [[        .n[[  [[[,/[[['  \n"
-        "\"$$$\"\"\"$$$ $$      $$$  $$$ \"Y$c$$     $$       ``\"$$$.$$$$$$c    \n"
-        " 888   \"88o88    .d888  888    Y88     88,      ,,o888\"888b \"88bo,\n"
-        " MMM    YMM \"YmmMMMM\"\"  MMM     YM     MMM      YMMP\"  MMMM   \"W\" \n"
-    )
-    print(f"{Colors.PRIMARY}{b_art}{Colors.RESET}")
-    print(f"    {Colors.DIM}v2.5 - PREDATOR EDITION{Colors.RESET}\n")
+def ui_manual_target_input() -> dict:
+    """Prompt user for a manual target and return a dict suitable for orch.start_mission."""
+    try:
+        dom = input("  Dominio (ex: example.com): ").strip()
+        if not dom: return {}
+        handle = dom.replace('.', '_').replace('-', '_')
+        return {'domains': [dom], 'handle': handle, 'score': 30}
+    except Exception:
+        return {}
 
-
-def ui_main_menu() -> str:
-    ui_clear_and_banner()
-    print(f"  {Colors.BOLD}MENU PRINCIPAL{Colors.RESET}")
-    print(f"  {'─'*40}")
-    print(f"  {Colors.SECONDARY}[1]{Colors.RESET} {Colors.INFO}Executar Watchdog (Recon Contínuo){Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[2]{Colors.RESET} {Colors.INFO}Executar Scan Unico (Alvo Especifico){Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[3]{Colors.RESET} {Colors.INFO}Trocar Modelo de IA{Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[0]{Colors.RESET} {Colors.INFO}Sair{Colors.RESET}")
-    print(f"  {'─'*40}")
-    return input(f"  {Colors.BOLD}Escolha uma opcao: {Colors.RESET}").strip()
-
-def ui_banner_menu():
-    """Banner padrão para os menus"""
-    b_art = (
-        "  ::   .:   ...    ::::::.    :::.:::::::::::: .::.   :::::::..   \n"
-        " ,;;   ;;,  ;;     ;;;`;;;;,  `;;;;;;;;;;;'''';'`';;, ;;;;``;;;;  \n"
-        ",[[[,,,[[[ [['     [[[  [[[[[. '[[     [[        .n[[  [[[,/[[['  \n"
-        "\"$$$\"\"\"$$$ $$      $$$  $$$ \"Y$c$$     $$       ``\"$$$.$$$$$$c    \n"
-        " 888   \"88o88    .d888  888    Y88     88,      ,,o888\"888b \"88bo,\n"
-        " MMM    YMM \"YmmMMMM\"\"  MMM     YM     MMM      YMMP\"  MMMM   \"W\" \n"
-    )
-    print(f"{Colors.PRIMARY}{b_art}{Colors.RESET}")
-    print(f"    {Colors.DIM}v2.5 - PREDATOR EDITION{Colors.RESET}\n")
-
-# ---------------------------------------------------------------------------
-# CLI Menu & Utilities (Reintegrados para o main.py)
-# ---------------------------------------------------------------------------
-
-def ui_clear():
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-def ui_banner():
-    b_art = (
-        "  ::   .:   ...    ::::::.    :::.:::::::::::: .::.   :::::::..   \n"
-        " ,;;   ;;,  ;;     ;;;`;;;;,  `;;;;;;;;;;;'''';'`';;, ;;;;``;;;;  \n"
-        ",[[[,,,[[[ [['     [[[  [[[[[. '[[     [[        .n[[  [[[,/[[['  \n"
-        "\"$$$\"\"\"$$$ $$      $$$  $$$ \"Y$c$$     $$       ``\"$$$.$$$$$$c    \n"
-        " 888   \"88o88    .d888  888    Y88     88,      ,,o888\"888b \"88bo,\n"
-        " MMM    YMM \"YmmMMMM\"\"  MMM     YM     MMM      YMMP\"  MMMM   \"W\" \n"
-    )
-    print(f"{Colors.PRIMARY}{b_art}{Colors.RESET}")
-    print(f"    {Colors.DIM}v2.5 - PREDATOR TACTICAL VIEW{Colors.RESET}\n")
+def ui_custom_targets_list(targets: list) -> dict:
+    """Show custom targets and return selected dict."""
+    if not targets: return {}
+    for i, t in enumerate(targets, 1):
+        print(f"  [{i}] {t.get('domain')}")
+    try:
+        sel = int(input(f"  Selecione (1-{len(targets)}): ").strip())
+        if 1 <= sel <= len(targets):
+            return targets[sel-1]
+    except Exception:
+        pass
+    return {}
 
 def ui_main_menu() -> str:
     ui_clear()

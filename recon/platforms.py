@@ -98,7 +98,8 @@ class PlatformManager:
             # 1. EXTRAÇÃO RÁPIDA: Puxa apenas os handles (sem detalhes pesados)
             while True:
                 params = {"page[number]": page, "page[size]": 100}
-                resp = self.session.get(list_url, auth=(self.h1_username, self.h1_token), params=params, timeout=20, verify=True)
+                auth = (self.h1_username, self.h1_token) if (self.h1_username and self.h1_token) else None
+                resp = self.session.get(list_url, auth=auth, params=params, timeout=20, verify=True)
                 
                 if resp.status_code == 429:
                     ui_log("H1 API", "Rate Limit. Aguarde 5s...", Colors.WARNING)
@@ -144,7 +145,8 @@ class PlatformManager:
             try:
                 # Delay mínimo por thread para não estourar o Rate Limit global
                 time.sleep(0.8) 
-                r = self.session.get(detail_url, params={"include": "structured_scopes"}, auth=(self.h1_username, self.h1_token), timeout=15, verify=True)
+                auth = (self.h1_username, self.h1_token) if (self.h1_username and self.h1_token) else None
+                r = self.session.get(detail_url, params={"include": "structured_scopes"}, auth=auth, timeout=15, verify=True)
                 if r.status_code != 200: return None
                 
                 d_json = r.json()

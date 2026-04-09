@@ -1,22 +1,29 @@
-# 🛡️ HUNT3R-v1.0: SPECIFICATION & ROADMAP
+# 🛡️ HUNT3R: Technical Specification (current)
 
-## 🎯 Objetivo
-Sniper de infraestrutura para Bug Bounty (H1, BC, IT). Precisão > Velocidade.
+## 🔄 THE PIPELINE (PREDATOR CYCLE)
+1. WATCHDOG: coleta wildcards (H1/BC/IT) em ciclos de 4–6h com cache de 12h.
+2. DIFF ENGINE: compara descobertas com `recon/baselines/{handle}*` e só processa novos/alterados.
+3. DUAL-SCAN:
+   - Infra phase: Nuclei (tags: cve,takeover,misconfig for premium).
+   - Endpoints phase: Katana crawler => tactical Nuclei (anti-tarpit rates).
+4. JS HUNTER: extração passiva de secrets via regex em assets JS.
 
-## 🏗️ Arquitetura Atual (v1.0-EXCALIBUR)
-1. **Watchdog 24/7:** Ciclos paralelos de H1/BC/IT. Cache de wildcards de 12h para evitar timeouts.
-2. **Dual-Scan Nuclei:** Fase 1 (Infra - 300 rps) | Fase 2 (Endpoints - 50 rps + Anti-Tarpit).
-3. **JS Hunter:** Extração passiva de segredos em arquivos .js via regex.
-4. **Notifier Routing:** Separação tática de ruído (Telegram vs Discord).
+## 🧩 ARCHITECTURE NOTES (UPDATED)
+- ProOrchestrator: coordenador leve (delegates mission execution to MissionRunner).
+- MissionRunner: nova classe que encapsula o ciclo de uma missão (prepare, vuln phase, finalize).
+- Engines (recon/engines.py): remain procedural; adapters planned next.
+- UI (core/ui_manager.py): funções exportadas compatíveis com main.py (ui_main_menu, ui_platform_selection_menu, etc.).
 
-## 🚀 Épicos de Blindagem (IMEDIATO)
-- [ ] **Hardening VPS:** Desativar senhas SSH, configurar Fail2Ban e UFW.
-- [ ] **Sanitização de Código:** Remover todos os `shell=True` remanescentes em `updater.py` e `template_manager.py`.
-- [ ] **Stealth Mode:** Implementar rotação de User-Agent real em todos os comandos do HTTPX e Nuclei.
-- [ ] **Git Cleanup:** Remover permanentemente o histórico do `.env` do repositório.
+## 📡 NOTIFICATION ROUTING
+- Telegram: urgent (Critical/High/Medium, JS secrets, escalations).
+- Discord: informational logs and watchdog cycles.
 
-## 🚧 Status das Integrações
-- **HackerOne:** Full (API Key).
-- **BugCrowd:** Ativo (bbscope via Token).
-- **Intigrity:** Ativo (bbscope via Token).
-- **Portfolio/OpenClaw:** Pausado/Inativo.
+## 🗄️ DIRECTORY STRUCTURE
+- `core/`: orchestration, AI client, notifier, UI, refactored orchestrator.
+- `recon/`: engines, baselines, tool wrappers.
+- `docs/`: project specs and operational prompts.
+
+## STATUS
+- Refactor: ProOrchestrator decoupled; MissionRunner extracted.
+- Static checks: pyright passes after recent fixes.
+- Backwards compatibility: ProOrchestrator.start_mission supports legacy calls.

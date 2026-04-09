@@ -3,24 +3,29 @@ tools:
     name: "Subfinder"
     binary: "subfinder"
     install_cmd: "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
+    rate_limit: 50
   dnsx:
     name: "DNSX"
     binary: "dnsx"
     install_cmd: "go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest"
+    rate_limit: 50
   httpx:
     name: "HTTPX"
     binary: "httpx"
     install_cmd: "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"
+    rate_limit: 50
   katana:
     name: "Katana"
     binary: "katana"
     install_cmd: "go install -v github.com/projectdiscovery/katana/cmd/katana@latest"
+    rate_limit: 50
   nuclei:
     name: "Nuclei"
     binary: "nuclei"
     install_cmd: "go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"
     templates_repo: "https://github.com/projectdiscovery/nuclei-templates"
     templates_dir: "~/nuclei-templates"
+    rate_limit: 50
 
 custom_templates:
   payloads_all_the_things:

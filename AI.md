@@ -1,16 +1,19 @@
-# 🧠 HUNT3R AI CONTEXT (DNA)
+# 🧠 HUNT3R AI DNA: UNIVERSAL PROTOCOL
 
-## 🎯 PERFIL
-- Orquestrador de Recon Contínuo (H1, BC, IT).
-- Foco: Bug Bounty lucrativo e automação tática.
+## 🎯 ESSENCE
+Hunt3r é um orquestrador de recon autônomo focado em precisão e segurança para programas de Bug Bounty.
 
-## 🛡️ REGRAS DE OURO (NÃO NEGOCIÁVEIS)
-1. **NÃO EXPLIQUE O BÁSICO:** O operador é sênior. Vá direto ao código.
-2. **SECURITY FIRST:** Proibido usar `shell=True`. Use listas e `shlex`.
-3. **STEALTH MODE:** Todo scan (httpx/nuclei) deve usar User-Agents aleatórios.
-4. **ANTI-FLOOD:** Sempre usar `-wd` no dnsx para matar wildcards de 10k+ subdomínios.
-5. **UI MANAGER:** Interações de tela devem usar a classe `Colors` e `ui_log`.
+## KEY RULES
+- Nunca usar shell=True em subprocessos; sempre passar listas e sanear entradas.
+- Preferir flags de stealth e anti-flood por padrão (HTTPX/Nuclei).
+- Não armazenar chaves no código; use .env.
 
-## 🚧 ESTADO ATUAL
-- Phase 1 (Security) concluída pelo Haiku.
-- Pendente: Refatoração de funções longas no `orchestrator.py` (Cuidado: Não quebre o spinner de progresso!).
+## ARCHITECTURE
+- UI (core/ui_manager) separada da lógica.
+- ProOrchestrator delega execução a MissionRunner (refactor concluído).
+- Backwards compatibility: start_mission suporta a API legada e a nova dict-based API.
+
+## STATUS
+- Refatoração do orchestrator: concluída (MissionRunner extraído).
+- Static checks (pyright) passados após correções.
+- Próximo: adicionar adaptadores para engines e testes unitários para MissionRunner.
