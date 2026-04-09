@@ -146,7 +146,7 @@ _live_view_data = {
     "Katana": {"status": "idle", "progress": 0, "crawled": 0},
     "Nuclei": {"status": "idle", "progress": 0, "vulns": 0},
 }
-_live_view_lock = threading.Lock()
+_live_view_lock = threading.RLock()  # Re-entrant lock prevents deadlocks from nested acquire calls
 
 def _start_live_view():
     """Inicia o live view em uma thread separada."""
