@@ -128,11 +128,13 @@ def _fetch_global_wildcards():
 def _process_raw_to_targets(raw_list):
     """Lógica auxiliar para limpar e rankear os wildcards brutos."""
     from core.dedup import to_set
+    
+    # Load history once at start (optimization: avoid repeated file I/O)
     history = to_set([])
     if os.path.exists(GLOBAL_TARGETS_HISTORY):
         with open(GLOBAL_TARGETS_HISTORY, 'r') as f: 
             history = to_set(f.read().splitlines())
-
+    
     valid_targets = []
     new_found = []
 
@@ -142,7 +144,7 @@ def _process_raw_to_targets(raw_list):
         
         if clean not in history:
             new_found.append(clean)
-            with open(GLOBAL_TARGETS_HISTORY, 'a') as f: f.write(clean + "\n")
+            history.add(clean)  # Add to memory copy
 
         valid_targets.append({
             'handle': clean.replace('.', '_'),
@@ -150,8 +152,13 @@ def _process_raw_to_targets(raw_list):
             'domains': [clean],
             'score': 50
         })
-
+    
+    # Write all new targets at once (optimization: batch I/O instead of per-target)
     if new_found:
+        os.makedirs(os.path.dirname(GLOBAL_TARGETS_HISTORY), exist_ok=True)
+        with open(GLOBAL_TARGETS_HISTORY, 'a') as f:
+            for target in new_found:
+                f.write(target + "\n")
         ui_log("PREDADOR", f"{len(new_found)} NOVOS ALVOS DETECTADOS!", Colors.SUCCESS)
     
     return valid_targets[:MAX_TARGETS_PER_CYCLE]
