@@ -20,8 +20,12 @@ from core.ai_client import AIClient
 # Diff Engine
 from core.diff_engine import ReconDiff
 
+# Rate limiting
+from core.rate_limiter import get_rate_limiter
+
 # Rate limiting from config (default 50)
 RATE_LIMIT = 50
+REQUESTS_PER_SECOND = 1.0  # Per-target throttling: 1 request per second
 
 MAX_SUBS_PER_TARGET = 2000 
 _CACHE_TIMES = "recon/tool_times.json"
@@ -110,6 +114,8 @@ class MissionRunner:
         
         # Subfinder: encontra subdomínios
         sub_file = paths["sub"]
+        limiter = get_rate_limiter(REQUESTS_PER_SECOND)
+        limiter.wait_and_record(self.target.get('handle', 'unknown'))
         with _live_view_lock:
             _live_view_data["Subfinder"]["status"] = "running"
         _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
@@ -120,6 +126,7 @@ class MissionRunner:
         # DNSX: valida subdomínios e obtém IPs
         live_file = paths["live"]
         unv_file = paths["unv"]
+        limiter.wait_and_record(self.target.get('handle', 'unknown'))
         with _live_view_lock:
             _live_view_data["DNSX"]["status"] = "running"
         _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
@@ -128,6 +135,7 @@ class MissionRunner:
             _live_view_data["DNSX"]["live"] = _count_lines(live_file) if os.path.exists(live_file) else 0
         
         # Uncover: detecta takeover potentials
+        limiter.wait_and_record(self.target.get('handle', 'unknown'))
         with _live_view_lock:
             _live_view_data["Uncover"]["status"] = "running"
         uncover_file = paths["sub"] + ".uncover"
@@ -138,6 +146,7 @@ class MissionRunner:
         
         # HTTPX: descobre endpoints
         httpx_file = paths["live"] + ".httpx"
+        limiter.wait_and_record(self.target.get('handle', 'unknown'))
         with _live_view_lock:
             _live_view_data["HTTPX"]["status"] = "running"
         _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
@@ -162,8 +171,11 @@ class MissionRunner:
             ui_log("INFO", "Nenhum subdomínio vivo. Pulando fase tática.", Colors.WARNING)
             return
         
+        limiter = get_rate_limiter(REQUESTS_PER_SECOND)
+        
         # Katana: crawling inteligente
         katana_file = paths["live"] + ".katana"
+        limiter.wait_and_record(self.target.get('handle', 'unknown'))
         with _live_view_lock:
             _live_view_data["Katana"]["status"] = "running"
         _run_with_progress("Katana", lambda: run_katana_surgical(live_file, katana_file, rate_limit=RATE_LIMIT))
@@ -173,6 +185,7 @@ class MissionRunner:
         
         # JS Hunter: extrai segredos de arquivos JavaScript
         js_secrets_file = paths["live"] + ".js_secrets"
+        limiter.wait_and_record(self.target.get('handle', 'unknown'))
         with _live_view_lock:
             _live_view_data["JS Hunter"]["status"] = "running"
         _run_with_progress("JS Hunter", lambda: run_js_hunter(katana_file, js_secrets_file))
@@ -182,6 +195,7 @@ class MissionRunner:
         
         # Nuclei: scanning de vulnerabilidades
         findings_file = paths["fin"]
+        limiter.wait_and_record(self.target.get('handle', 'unknown'))
         with _live_view_lock:
             _live_view_data["Nuclei"]["status"] = "running"
         _run_with_progress("Nuclei", lambda: run_nuclei(live_file, findings_file, "cve,misconfig,takeover", self.stats_pipe))
