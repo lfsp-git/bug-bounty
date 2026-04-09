@@ -206,6 +206,7 @@ class MissionRunner:
         sub_count = count_lines(ns)
         if sub_count > MAX_SUBS_PER_TARGET:
             ui_log("GUARD", f"Alvo abusivo ({sub_count} subs). Truncando lista", Colors.WARNING)
+            logging.warning(f"Subdomain truncation for {self.target.get('handle', 'unknown')}: {sub_count} subs → {MAX_SUBS_PER_TARGET} subs (lost {sub_count - MAX_SUBS_PER_TARGET})")
             t_ns = f"{ns}_truncated"
             with open(ns, 'r') as f, open(t_ns, 'w') as o:
                 for i, l in enumerate(f):
