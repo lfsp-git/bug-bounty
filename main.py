@@ -170,15 +170,33 @@ def state_list(orch):
 def main():
     _load_env()
 
-    # --watchdog CLI argument
+    # CLI arguments
     parser = argparse.ArgumentParser(description="HUNT3R - Autonomous Recon")
     parser.add_argument("--watchdog", action="store_true", help="Modo contínuo: Top 15 Wildcards, 24/7")
+    parser.add_argument("--dry-run", action="store_true", help="Preview scan targets without executing tools")
+    parser.add_argument("--resume", type=str, help="Resume scan from checkpoint (mission_id)")
+    parser.add_argument("--export", type=str, choices=['csv', 'xlsx', 'xml'], help="Export findings format")
     args = parser.parse_args()
 
     if args.watchdog:
         ui_clear()
         from core.watchdog import run_watchdog
         run_watchdog()
+        return
+    
+    if args.dry_run:
+        ui_clear(); ui_banner()
+        ui_log("DRY-RUN", "Starting preview mode (no tools will execute)...", Colors.WARNING)
+        # Dry run mode: load targets, show what would be scanned, exit
+        from core.dry_run import run_dry_run
+        run_dry_run()
+        return
+    
+    if args.resume:
+        ui_clear(); ui_banner()
+        ui_log("RESUME", f"Resuming mission from checkpoint: {args.resume}", Colors.WARNING)
+        from core.checkpoint import resume_mission
+        resume_mission(args.resume)
         return
 
     # TELA INICIAL: Renderiza o estado Menu
