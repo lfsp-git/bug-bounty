@@ -77,11 +77,11 @@ class ToolUpdater:
                 # Binario nao existe - tenta instalar
                 install_cmd = ti.get('install_cmd','')
                 if install_cmd:
-                # Split command safely using shlex
-                cmd_args = shlex.split(install_cmd)
-                ok = self._run_silent(cmd_args, self.config.get('settings',{}).get('max_update_time',120))
-            else:
-                ok = False
+                    # Split command safely using shlex
+                    cmd_args = shlex.split(install_cmd)
+                    ok = self._run_silent(cmd_args, self.config.get('settings',{}).get('max_update_time',120))
+                else:
+                    ok = False
             else:
                 # Binario existe - pula update silencioso (para nao demorar)
                 ok = True  # Assume OK se ja existe
