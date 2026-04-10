@@ -42,6 +42,8 @@ SLEEP_MIN = WATCHDOG_SLEEP_MIN
 SLEEP_MAX = WATCHDOG_SLEEP_MAX
 MAX_TARGETS_PER_CYCLE = WATCHDOG_MAX_TARGETS
 MAX_PARALLEL_WORKERS = WATCHDOG_WORKERS
+_ADAPTIVE_SLEEP_MIN = max(1800, SLEEP_MIN // 2)
+_ADAPTIVE_SLEEP_MAX = SLEEP_MAX * 2
 
 TARGET_BLACKLIST = ['ui', 'spotify', 'gitlab', 'coinbase']
 
@@ -244,7 +246,7 @@ def _scan_target_parallel_wrapper(args):
             _record_scan_result(handle, has_changes)
             if results and isinstance(results, dict):
                 ui_worker_done(worker_id, results)
-            return {'success': True, 'handle': handle, 'worker': worker_id, 'changes': has_changes}
+            return {'success': True, 'handle': handle, 'worker': worker_id, 'changes': has_changes, 'results': results}
         else:
             ui_log("WATCHDOG", f"[{idx}/{total}] Pulando (historico recente): {target['original_handle']}", Colors.DIM)
             return {'success': False, 'handle': handle, 'reason': 'cached'}
@@ -257,6 +259,25 @@ def _scan_target_parallel_wrapper(args):
     finally:
         set_worker_context("W0")
         _worker_slot_queue.put(worker_id)
+
+
+def _compute_next_sleep_seconds(cycle_metrics: dict) -> int:
+    targets = int(cycle_metrics.get("targets", 0))
+    changed = int(cycle_metrics.get("changed", 0))
+    errors = int(cycle_metrics.get("errors", 0))
+    change_ratio = (changed / targets) if targets > 0 else 0.0
+
+    # Adaptive policy:
+    # - high change ratio => faster cycle
+    # - no changes and errors => slower cycle
+    # - default stays around configured midpoint
+    if change_ratio >= 0.30:
+        return max(_ADAPTIVE_SLEEP_MIN, SLEEP_MIN)
+    if change_ratio == 0.0 and errors == 0:
+        return min(_ADAPTIVE_SLEEP_MAX, SLEEP_MAX + 1800)
+    if errors > max(1, targets // 3):
+        return min(_ADAPTIVE_SLEEP_MAX, SLEEP_MAX + 3600)
+    return random.randint(SLEEP_MIN, SLEEP_MAX)
 
 def run_watchdog():
     from core.runner import set_record_tool_times
@@ -278,6 +299,7 @@ def run_watchdog():
             from core.runner import ProOrchestrator
 
             total = len(wildcards)
+            cycle_metrics = {"targets": total, "changed": 0, "errors": 0, "phase_seconds": {"recon": 0.0, "vulnerability": 0.0}}
             tasks = []
             for idx, target in enumerate(wildcards, 1):
                 orch = ProOrchestrator(IntelMiner(AIClient()))
@@ -291,12 +313,32 @@ def run_watchdog():
                         if result.get('success'):
                             w = result.get('worker', '?')
                             ui_log("WATCHDOG", f"[{w}] Concluido: {result['handle']}", Colors.SUCCESS)
+                            if result.get("changes"):
+                                cycle_metrics["changed"] += 1
+                            payload = result.get("results", {})
+                            metrics = payload.get("metrics", {}).get("phase_duration_seconds", {})
+                            cycle_metrics["phase_seconds"]["recon"] += float(metrics.get("recon", 0.0))
+                            cycle_metrics["phase_seconds"]["vulnerability"] += float(metrics.get("vulnerability", 0.0))
+                        else:
+                            if result.get("reason") != "cached":
+                                cycle_metrics["errors"] += 1
                 except KeyboardInterrupt:
                     ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
                     executor.shutdown(wait=False)
                     return
+            if cycle_metrics["targets"] > 0:
+                avg_recon = cycle_metrics["phase_seconds"]["recon"] / cycle_metrics["targets"]
+                avg_vuln = cycle_metrics["phase_seconds"]["vulnerability"] / cycle_metrics["targets"]
+                ui_log(
+                    "WATCHDOG",
+                    f"Metricas ciclo: changed={cycle_metrics['changed']}/{cycle_metrics['targets']} "
+                    f"errors={cycle_metrics['errors']} avg_recon={avg_recon:.1f}s avg_vuln={avg_vuln:.1f}s",
+                    Colors.DIM,
+                )
+        else:
+            cycle_metrics = {"targets": 0, "changed": 0, "errors": 0}
 
-        secs = random.randint(SLEEP_MIN, SLEEP_MAX)
+        secs = _compute_next_sleep_seconds(cycle_metrics)
         wake = (datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')
         ui_log("WATCHDOG", f"Dormindo ate {wake} ({secs//3600}h{(secs%3600)//60}m)", Colors.DIM)
         try:

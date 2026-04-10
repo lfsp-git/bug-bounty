@@ -10,6 +10,7 @@ import logging
 import requests
 from datetime import datetime
 from core.ui import ui_log, Colors
+from core.config import NOTIFY_DEDUP_CACHE_FILE, NOTIFY_DEDUP_TTL_SECONDS
 
 
 class NotifierConfig:
@@ -70,6 +71,44 @@ def _tg_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _load_dedup_cache() -> dict:
+    try:
+        if os.path.exists(NOTIFY_DEDUP_CACHE_FILE):
+            with open(NOTIFY_DEDUP_CACHE_FILE, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+                if isinstance(payload, dict):
+                    return payload
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def _save_dedup_cache(cache: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(NOTIFY_DEDUP_CACHE_FILE), exist_ok=True)
+        with open(NOTIFY_DEDUP_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    except OSError as e:
+        logging.debug(f"Notifier dedup cache save failed: {e}")
+
+
+def _is_duplicate_and_record(key: str) -> bool:
+    now = int(datetime.utcnow().timestamp())
+    cache = _load_dedup_cache()
+    # prune expired entries
+    fresh = {
+        k: ts for k, ts in cache.items()
+        if isinstance(ts, int) and (now - ts) < NOTIFY_DEDUP_TTL_SECONDS
+    }
+    last_ts = fresh.get(key)
+    if isinstance(last_ts, int) and (now - last_ts) < NOTIFY_DEDUP_TTL_SECONDS:
+        _save_dedup_cache(fresh)
+        return True
+    fresh[key] = now
+    _save_dedup_cache(fresh)
+    return False
+
+
 def _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep=False):
     """Build HTML-formatted Telegram alert."""
     emoji = {
@@ -128,6 +167,9 @@ class NotificationDispatcher:
             is_deep = d.get("_deep_scan", False)
 
             if sev in ("CRITICAL", "HIGH"):
+                dedup_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
+                if _is_duplicate_and_record(dedup_key):
+                    continue
                 html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                 _tg_post(tg[0], tg[1], html)
             elif escalated:
@@ -140,8 +182,14 @@ class NotificationDispatcher:
                     f"Simulated severity: {sim_sev}\n"
                     f"Report:\n<pre>{_tg_escape(report)}</pre>\n"
                 )
+                dedup_key = f"tg:escalated:{target}:{escalated}:{tid}"
+                if _is_duplicate_and_record(dedup_key):
+                    continue
                 _tg_post(tg[0], tg[1], html)
             elif sev == "MEDIUM":
+                dedup_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
+                if _is_duplicate_and_record(dedup_key):
+                    continue
                 html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                 _tg_post(tg[0], tg[1], html)
 
@@ -207,6 +255,9 @@ class NotificationDispatcher:
 
                     # Telegram: Critical + High + Medium
                     if sev in ("CRITICAL", "HIGH", "MEDIUM") and tg:
+                        dedup_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
+                        if _is_duplicate_and_record(dedup_key):
+                            continue
                         html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                         _tg_post(tg[0], tg[1], html)
 
@@ -253,9 +304,15 @@ class NotificationDispatcher:
                             f"Source: <code>{_tg_escape(source[:80])}</code>\n"
                             f"Value: <code>{_tg_escape(val)}</code>\n"
                         )
+                        dedup_key = f"tg:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
+                        if _is_duplicate_and_record(dedup_key):
+                            continue
                         _tg_post(tg[0], tg[1], html)
                         tg_count += 1
                     elif dc:
+                        dedup_key = f"dc:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
+                        if _is_duplicate_and_record(dedup_key):
+                            continue
                         embed = {
                             "title": f"[JS Secret] {target}",
                             "description": f"Type: `{stype}`\nSource: `{source[:80]}`\nValue: `{val}`",

@@ -118,6 +118,15 @@ def _run_with_progress(label, fn, live_tail_pipe=None, extra_stats_fn=None):
             t.join(timeout=2.0)  # give spinner up to 2s to exit cleanly (was 0.5)
     return success
 
+
+def _phase_duration(phase_result: Dict[str, Any]) -> float:
+    counts = phase_result.get("counts", {})
+    started = counts.get("_started_at")
+    ended = counts.get("_ended_at")
+    if isinstance(started, (int, float)) and isinstance(ended, (int, float)) and ended >= started:
+        return ended - started
+    return 0.0
+
 def _count_lines(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as fh:
@@ -283,6 +292,7 @@ class MissionRunner:
     def _run_recon_phase(self, paths, domains):
         """Executa a fase de reconhecimento: subfinder, dnsx, uncover, httpx."""
         phase_result = self._build_phase_result("recon")
+        phase_started = time.time()
         dom_file = paths["dom"]
         os.makedirs(os.path.dirname(dom_file), exist_ok=True)
         with open(dom_file, 'w') as f:
@@ -372,6 +382,8 @@ class MissionRunner:
             "takeovers": count_lines(uncover_file),
             "httpx_urls": count_lines(httpx_file),
             "unresolved": count_lines(unv_file),
+            "_started_at": phase_started,
+            "_ended_at": time.time(),
         }
         phase_result["paths"] = {
             "dom": dom_file,
@@ -386,11 +398,16 @@ class MissionRunner:
     def _run_tactical_phase(self, paths):
         """Executa a fase tática: Katana, JS Hunter, Nuclei."""
         phase_result = self._build_phase_result("tactical")
+        phase_started = time.time()
         live_file = paths["live"]
         if not os.path.exists(live_file) or os.path.getsize(live_file) == 0:
             ui_log("INFO", "Nenhum subdomínio vivo. Pulando fase tática.", Colors.WARNING)
             phase_result["ok"] = False
             phase_result["errors"].append("No live subdomains for tactical phase")
+            phase_result["counts"] = {
+                "_started_at": phase_started,
+                "_ended_at": time.time(),
+            }
             return phase_result
         
         limiter = get_rate_limiter(REQUESTS_PER_SECOND)
@@ -455,6 +472,8 @@ class MissionRunner:
             "katana_urls": count_lines(katana_file),
             "js_secrets": count_lines(js_secrets_file),
             "findings": _count_findings(findings_file),
+            "_started_at": phase_started,
+            "_ended_at": time.time(),
         }
         phase_result["paths"] = {
             "input": recon_input,
@@ -466,11 +485,16 @@ class MissionRunner:
 
     def _run_vulnerability_phase(self, paths):
         phase_result = self._build_phase_result("vulnerability")
+        phase_started = time.time()
         # Aplica filtro sniper
         ns = paths.get("live", "")
         if not os.path.exists(ns) or os.path.getsize(ns) == 0:
             phase_result["ok"] = False
             phase_result["errors"].append("No live file for vulnerability phase")
+            phase_result["counts"] = {
+                "_started_at": phase_started,
+                "_ended_at": time.time(),
+            }
             return phase_result
 
         ns_clean = f"{ns}_clean"
@@ -493,6 +517,8 @@ class MissionRunner:
         phase_result["ok"] = tactical.get("ok", False)
         phase_result["errors"] = tactical.get("errors", [])
         phase_result["counts"] = tactical.get("counts", {})
+        phase_result["counts"]["_started_at"] = phase_started
+        phase_result["counts"]["_ended_at"] = time.time()
         phase_result["paths"] = tactical.get("paths", {})
         phase_result["paths"]["sniper_input"] = ns
         return phase_result
@@ -658,6 +684,16 @@ Respond only: VALID or INVALID"""
         phase_errors = recon_result.get("errors", []) + vuln_result.get("errors", [])
         results["errors"] = phase_errors
         results["ok"] = not phase_errors
+        results["metrics"] = {
+            "phase_duration_seconds": {
+                "recon": round(_phase_duration(recon_result), 2),
+                "vulnerability": round(_phase_duration(vuln_result), 2),
+            },
+            "phase_errors_count": {
+                "recon": len(recon_result.get("errors", [])),
+                "vulnerability": len(vuln_result.get("errors", [])),
+            },
+        }
         if phase_errors:
             ui_log("MISSION", f"{len(phase_errors)} erro(s) de fase detectados.", Colors.WARNING)
         # Stop live view FIRST so its thread doesn't race with ui_scan_summary prints

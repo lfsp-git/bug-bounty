@@ -74,6 +74,8 @@ AI_SCORE_THRESHOLD: int = 80      # Minimum score to trigger AI validation
 # ---------------------------------------------------------------------------
 NOTIFY_HIGH_SEVERITIES: List[str] = ["critical", "high"]
 DISCORD_BATCH_SIZE: int = 15
+NOTIFY_DEDUP_TTL_SECONDS: int = 21600  # 6 h
+NOTIFY_DEDUP_CACHE_FILE: str = "recon/cache/notifier_dedup.json"
 
 # ---------------------------------------------------------------------------
 # Paths
