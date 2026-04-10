@@ -21,13 +21,13 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
     """Watchdog must gracefully handle missing bbscope."""
 
     def test_bbscope_missing_returns_empty(self):
-        """When bbscope is not found, _fetch_global_wildcards returns []."""
-        import importlib
+        """When bbscope is not found and cache is expired, _fetch_global_wildcards returns []."""
         import core.watchdog as wd
 
         with patch("recon.tool_discovery.find_tool", return_value="bbscope"), \
              patch("shutil.which", return_value=None), \
-             patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t"}):
+             patch("os.path.exists", return_value=False), \
+             patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "BC_TOKEN": "", "IT_TOKEN": ""}):
             result = wd._fetch_global_wildcards()
         self.assertEqual(result, [])
 

@@ -105,7 +105,9 @@ def ui_log(module: str, message: str, color=Colors.RESET):
 
 def ui_update_status(step: str, detail: str, color=Colors.PRIMARY):
     icon = ICONS.get(step.upper(), "[*]")
-    print(f"\r\033[K{color}{icon} {step} {detail}{Colors.RESET}")
+    # No newline: overwrite same line so spinner doesn't scroll the terminal
+    sys.stdout.write(f"\r\033[K{color}{icon} {step} {detail}{Colors.RESET}")
+    sys.stdout.flush()
 
 def ui_clear():
     # Avoid invoking clear when TERM is not set (common in CI/testing)
@@ -134,6 +136,8 @@ def ui_clear_and_banner():
 # ---------------------------------------------------------------------------
 # Live View System (Htop-style)
 # ---------------------------------------------------------------------------
+_LIVE_VIEW_LINES = 12  # lines rendered by live view block (header+sep+7tools+sep+total+sep)
+
 # Estado global do live view
 _live_view_active = False
 _live_view_thread = None
@@ -146,21 +150,49 @@ _live_view_data = {
     "Katana": {"status": "idle", "progress": 0, "crawled": 0},
     "Nuclei": {"status": "idle", "progress": 0, "vulns": 0},
 }
+_live_view_meta = {"target": "", "current": 0, "total": 0}
 _live_view_lock = threading.RLock()  # Re-entrant lock prevents deadlocks from nested acquire calls
 
+def ui_set_mission_meta(target: str, current: int = 0, total: int = 0):
+    """Update live view header with current target and progress indicators."""
+    with _live_view_lock:
+        _live_view_meta["target"] = target
+        _live_view_meta["current"] = current
+        _live_view_meta["total"] = total
+
+def _get_terminal_rows() -> int:
+    try:
+        return os.get_terminal_size().lines
+    except OSError:
+        return 24
+
 def _start_live_view():
-    """Inicia o live view em uma thread separada."""
+    """Inicia o live view em uma thread separada, reservando área na base do terminal."""
     global _live_view_active, _live_view_thread
+    rows = _get_terminal_rows()
+    scroll_bottom = rows - _LIVE_VIEW_LINES
+    # Reserve bottom N lines: set scroll region to rows 1..(rows-N)
+    sys.stdout.write(f"\033[1;{scroll_bottom}r")
+    # Clear live view area
+    sys.stdout.write(f"\033[{scroll_bottom + 1};1H")
+    for _ in range(_LIVE_VIEW_LINES):
+        sys.stdout.write("\033[K\n")
+    # Park cursor at top of scroll region
+    sys.stdout.write("\033[1;1H")
+    sys.stdout.flush()
     _live_view_active = True
     _live_view_thread = threading.Thread(target=_live_view_loop, daemon=True)
     _live_view_thread.start()
 
 def _stop_live_view():
-    """Para o live view."""
+    """Para o live view e restaura scroll region completo."""
     global _live_view_active
     _live_view_active = False
     if _live_view_thread:
         _live_view_thread.join(timeout=1)
+    if sys.stdout.isatty():
+        sys.stdout.write("\033[r")   # reset scroll region to full screen
+        sys.stdout.flush()
 
 def _live_view_loop():
     """Loop principal do live view."""
@@ -169,59 +201,68 @@ def _live_view_loop():
         time.sleep(0.5)
 
 _last_live_view_render = None
-_live_view_update_interval = 2.0  # Update every 2 seconds to avoid flicker
+_live_view_update_interval = 1.0
 _live_view_last_update = 0
 
 def _render_live_view():
-    """Renderiza o live view na tela (only when data changes or every 2 seconds)."""
+    """Renderiza o live view ancorado na base do terminal."""
     global _last_live_view_render, _live_view_last_update
-    
+
+    if not sys.stdout.isatty():
+        return
+
     with _live_view_lock:
-        # Create a hash of current data to detect changes
-        current_render = str(_live_view_data)
+        current_render = str(_live_view_data) + str(_live_view_meta)
         current_time = time.time()
-        
-        # Skip render if data hasn't changed and not enough time has passed
+
         if current_render == _last_live_view_render and (current_time - _live_view_last_update) < _live_view_update_interval:
             return
-        
+
         _last_live_view_render = current_render
         _live_view_last_update = current_time
-        
-        # Save cursor position
-        print("\033[s", end="")
-        
-        # Posiciona no topo da área do live view (linha 9, after banner)
-        print("\033[9;1H", end="")
-        
-        # Cabeçalho do live view
-        print(f"  {Colors.BOLD}LIVE VIEW - TOOL STATUS{Colors.RESET}")
-        print(f"  {'─'*56}")
-        
-        # Exibe cada ferramenta
+
+        rows = _get_terminal_rows()
+        top_of_view = rows - _LIVE_VIEW_LINES + 1  # first line of live view area
+
+        # Build header info
+        target = _live_view_meta.get("target", "")
+        cur = _live_view_meta.get("current", 0)
+        total = _live_view_meta.get("total", 0)
+
+        elapsed_str = ""
+        if _MISSION_START_TIME:
+            secs = int((datetime.now() - _MISSION_START_TIME).total_seconds())
+            m, s = divmod(secs, 60)
+            elapsed_str = f"  ⏱ {m:02d}m{s:02d}s"
+
+        progress_str = f"  [{cur}/{total}]" if total else ""
+        target_str = f"  🎯 {target}" if target else ""
+
+        out = sys.stdout
+        # Jump to start of live view area (below scroll region)
+        out.write(f"\033[{top_of_view};1H")
+
+        out.write(f"\r\033[K  {Colors.BOLD}LIVE VIEW{target_str}{progress_str}{elapsed_str}{Colors.RESET}\n")
+        out.write(f"\r\033[K  {'─'*56}\n")
+
         for tool, data in _live_view_data.items():
             status_icon = "🟢" if data["status"] == "running" else "🟡" if data["status"] == "idle" else "🔴"
             progress_bar = "█" * int(data["progress"] * 20) + "░" * (20 - int(data["progress"] * 20))
-            
-            # Get the appropriate count field
             count = data.get('subs', data.get('live', data.get('endpoints', data.get('crawled', data.get('secrets', data.get('vulns', 0))))))
-            
-            print(f"  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {count:<6}")
-        
-        # Linha de separação
-        print(f"  {'─'*56}")
-        
-        # Stats gerais
+            out.write(f"\r\033[K  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {count:<6}\n")
+
+        out.write(f"\r\033[K  {'─'*56}\n")
+
         total_subs = _live_view_data["Subfinder"].get("subs", 0)
         total_live = _live_view_data["DNSX"].get("live", 0)
         total_endpoints = _live_view_data["HTTPX"].get("endpoints", 0)
         total_vulns = _live_view_data["Nuclei"].get("vulns", 0)
-        
-        print(f"  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}")
-        print(f"  {'─'*56}")
-        
-        # Restore cursor position
-        print("\033[u", end="")
+        out.write(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}\n")
+        out.write(f"\r\033[K  {'─'*56}\n")
+
+        # Return cursor to bottom of scroll region so log output stays above live view
+        out.write(f"\033[{rows - _LIVE_VIEW_LINES};1H")
+        out.flush()
 
 def ui_mission_header(handle: str, score: int = 0):
     global _MISSION_START_TIME

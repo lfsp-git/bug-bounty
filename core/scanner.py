@@ -3,8 +3,8 @@ from typing import Dict, List, Any
 
 # UI Imports
 from core.ui import (
-    ui_mission_header, ui_log, ui_update_status, ui_scan_summary, 
-    ui_mission_footer, Colors, _live_view_data, _live_view_lock
+    ui_mission_header, ui_log, ui_update_status, ui_scan_summary,
+    ui_mission_footer, Colors, _live_view_data, _live_view_lock, ui_set_mission_meta
 )
 
 # Engine Imports
@@ -346,6 +346,7 @@ Respond only: VALID or INVALID"""
         paths["fin"] = f"recon/baselines/{h}_findings.jsonl"
 
         ui_mission_header(h, self.target.get('score', 0))
+        ui_set_mission_meta(self.target.get('original_handle', h))
         self._run_recon_phase(paths, self.target.get('domains', []))
         self._run_vulnerability_phase(paths)
         

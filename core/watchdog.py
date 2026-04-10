@@ -22,7 +22,7 @@ os.environ["PATH"] += os.pathsep + os.path.join(home, "go", "bin") + os.pathsep 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Importe apenas o necessário
-from core.ui import ui_log, Colors, ui_clear_and_banner
+from core.ui import ui_log, Colors, ui_clear_and_banner, ui_set_mission_meta
 from core.config import TOOL_TIMEOUTS  # Centralized timeouts
 
 # Configurações
@@ -249,12 +249,13 @@ def run_watchdog():
             from core.ai import IntelMiner
             from core.ai import AIClient
             orch = ProOrchestrator(IntelMiner(AIClient()))
-            for t in wildcards:
+            for idx, t in enumerate(wildcards, 1):
                 try:
                     handle = t['handle']
                     # Decide se deve processar
                     if _should_process_target(handle):
                         ui_log("WATCHDOG", f"Processando: {t['original_handle']}", Colors.PRIMARY)
+                        ui_set_mission_meta(t['original_handle'], idx, len(wildcards))
                         results = _scan_target(orch, t)
                         # Determine if there were changes based on presence of subdomains
                         has_changes = bool(results.get('subdomains', 0)) if isinstance(results, dict) else False
