@@ -4,138 +4,130 @@
 1. **WATCHDOG**: coleta wildcards (H1/BC/IT) em ciclos de 4–6h com cache de 12h.
 2. **DIFF ENGINE**: compara com `recon/baselines/{handle}.json`, processa apenas novos/alterados.
 3. **RECON**: Subfinder → DNSX → Uncover → HTTPX.
-4. **TACTICAL**: Katana crawler → JS Hunter → Nuclei (`-tags cve,misconfig,takeover -severity critical,high,medium`).
+4. **TACTICAL**: Katana crawler → JS Hunter (JSONL com severity) → Nuclei (`-tags cve,misconfig,takeover -severity critical,high,medium -stats -sj`).
 5. **VALIDATION**: FalsePositiveKiller (6 filtros) + AI scoring (AIClient, score ≥ 80).
-6. **NOTIFY**: Telegram (Critical/High/Medium) · Discord (Low/Info batch).
+6. **NOTIFY**: Telegram (Critical/High/Medium + JS secrets severos) · Discord (Low/Info).
 7. **REPORT**: BugBountyReporter gera `reports/<handle>_<date>_report.md`.
 
 ## 🧩 ARCHITECTURE (Clean)
 
 ```
-main.py (CLI entry point, ~283 linhas)
+main.py (CLI entry point, ~290 linhas)
   ├── ProOrchestrator
   │     └── MissionRunner.run()
   │           ├── _run_recon_phase()          [subfinder/dnsx/uncover/httpx]
   │           ├── _run_vulnerability_phase()  [sniper filter + truncation guard]
   │           │     └── _run_tactical_phase()
   │           │           ├── katana          [-timeout 15 -depth 2]
-  │           │           ├── js_hunter
-  │           │           ├── nuclei          [-duc -severity crit/high/med -c 25 -timeout 5]
+  │           │           ├── js_hunter       [JSONL output, severity classification]
+  │           │           ├── nuclei          [-duc -stats -sj -severity crit/high/med -c 25 -timeout 5]
   │           │           └── FalsePositiveKiller + _filter_and_validate_findings()
   │           ├── _notify_and_report()        [NotificationDispatcher + BugBountyReporter]
   │           └── ReconDiff.save_baseline()
   └── WatchdogLoop (--watchdog)
 
-core/ (12 módulos, ~2750 linhas total)
-  config.py    — constantes, timeouts, rate limiter, dedup, validators
-  ai.py        — AIClient (OpenRouter)
+core/ (12 módulos)
+  config.py    — constantes, timeouts, rate limiter, validators
+  scanner.py   — MissionRunner + ProOrchestrator + _run_with_progress
+  ui.py        — terminal UI, scroll region, live view (snapshot under lock), _stdout_lock, snapshots
+  filter.py    — FalsePositiveKiller (6 filtros: WAF, placeholder, Micro, NULL, PH, curl)
+  ai.py        — AIClient + IntelMiner (OpenRouter)
   storage.py   — ReconDiff (baseline diff) + CheckpointManager
   export.py    — ExportFormatter (CSV/XLSX/XML) + run_dry_run
-  ui.py        — terminal UI, scroll region, live view, _stdout_lock, snapshots
-  filter.py    — FalsePositiveKiller (6 filtros: WAF, placeholder, Micro, etc.)
-  scanner.py   — MissionRunner + ProOrchestrator + _run_with_progress
-  notifier.py  — NotificationDispatcher (Telegram/Discord)
+  notifier.py  — NotificationDispatcher (Telegram/Discord, severity-based routing)
   reporter.py  — BugBountyReporter (Markdown reports)
   watchdog.py  — loop 24/7 autônomo
   updater.py   — ToolUpdater (PDTM + nuclei-templates)
-  __init__.py
 
-recon/ (4 módulos, ~540 linhas total)
+recon/ (4 módulos)
   engines.py        — run_subfinder/dnsx/uncover/httpx/katana/nuclei/js_hunter
-                      run_cmd captura stderr em temp file para debug
-  js_hunter.py      — JSHunter (extração real de secrets de JS)
+                      run_nuclei uses Popen + stderr streaming (-stats -sj)
+                      run_js_hunter outputs JSONL with severity field
+  js_hunter.py      — JSHunter (extração real de secrets de JS via regex)
   platforms.py      — H1Platform, BCPlatform, ITigriti, PlatformManager
   tool_discovery.py — find_tool() com cache, busca em ~/.pdtm/go/bin + ~/go/bin + PATH
+```
+
+## 🔧 TOOL FLAGS (verified working)
+```
+subfinder  -dL <file> -o <out> -silent -rate-limit=50
+dnsx       -l <file> -o <out> -wd -silent -a -rate-limit=50
+httpx      -l <file> -o <out> -silent -rate-limit 50
+katana     -list <file> -o <out> -silent -rate-limit=50 -timeout 15 -depth 2
+nuclei     -l <file> -o <out> -duc -stats -sj -rl 50 -c 25 -timeout 5
+           -severity critical,high,medium [-tags cve,misconfig,takeover]
 ```
 
 ## 📡 NOTIFICATION ROUTING
 | Severity | Canal | Formato |
 |----------|-------|---------|
 | Critical / High | Telegram | HTML individual por finding |
-| Medium | Telegram | HTML batch |
-| JS Secrets | Telegram | HTML individual |
+| Medium | Telegram | HTML individual (🟡) |
+| JS Secrets (Critical/High/Medium) | Telegram | HTML individual com tipo/valor |
 | Low / Info | Discord | Embed batch |
-| Recon logs | Discord | Text |
+| JS Secrets (Low) | Discord | Embed batch |
+
+## 🖥️ TERMINAL UI
+- `_FIXED_TOP=12` (7 banner + 5 header) → frozen via scroll region
+- `_LIVE_VIEW_LINES=12` → frozen at bottom
+- `_stdout_lock` (threading.Lock) → serializes ALL stdout writes
+- `_live_view_lock` (threading.RLock) → protects `_live_view_data`
+- `_render_live_view` → snapshots data under lock, non-blocking acquire on `_stdout_lock`
+- `_live_view_loop` → wrapped in try/except (prevents thread crash)
+- Status icons: ● grey (idle) → yellow (running) → green (done) / blue (0 results) / red (error)
+- TOTAL line: `x SUB | x LV | x TECH | x EP | x VN`
+- Nuclei progress: real-time from `-stats -sj` (requests_done/total, rps, matched)
+- Call order: `ui_mission_footer()` BEFORE `ui_scan_summary()` (mandatory)
+
+## ⏱️ TIMEOUTS (`core/config.py`)
+```python
+TOOL_TIMEOUTS = {
+    "subfinder": 60, "dnsx": 60, "uncover": 90,
+    "httpx": 120, "katana": 180, "js_hunter": 30,
+    "nuclei": 3600,  # 1h — vulns at any cost
+}
+RATE_LIMIT = 50
+MAX_SUBS_PER_TARGET = 2000
+```
 
 ## 🛡️ SECURITY
 - Tokens: nunca logados, nunca em código — apenas via `.env`
 - Command injection: `shlex.quote()` em todos os subprocessos
 - `.env.example`: apenas placeholders genéricos (sem dados reais)
-- Exception handling: específico em todos os módulos
+- API keys stored in `Session.headers` (never in log output)
+- All subprocess calls use list form (no shell=True)
+- MAX_SUBS_PER_TARGET = 2000 (guards against runaway scans)
 
 ## 🧪 TESTES
 ```bash
-python3 -m pytest tests/ -v  # 52 testes, 52 PASS (36 unit + 16 integration)
+python3 -m pytest tests/ -q  # 52 testes, 52 PASS (36 unit + 16 integration)
 ```
 Cobre: config, storage, filter, export, ai, notifier, reporter, dry-run, imports, scanner helpers.
 
 ## ⚠️ COMPORTAMENTOS ESPERADOS (NÃO SÃO BUGS)
 
 - **FP Titanium no startup do Watchdog**: Normal — filtro roda sobre dados em cache da sessão anterior.
-- **Nuclei 0 findings**: Normal em alvos sem vulnerabilidades conhecidas. Confirme com `-severity` adequada.
-- **Nuclei timeout em alvos grandes (400+ live)**: Aumentar `TOOL_TIMEOUTS["nuclei"]` em `core/config.py` se necessário.
+- **Nuclei 0 findings**: Normal em alvos sem vulnerabilidades conhecidas.
 - **Templates update failed no startup**: Normal se não há git ou acesso à internet; scan continua com templates existentes.
+- **HTTPX 0s em saída vazia do DNSX**: Comportamento correto, sem hosts vivos.
+
+## 📤 OUTPUTS
+- `recon/baselines/<handle>_findings.jsonl` — raw Nuclei JSONL (filtered)
+- `recon/baselines/<handle>_live.txt.js_secrets` — JS secrets (JSONL with severity)
+- `reports/<handle>_<date>_report.md` — submission-ready Markdown
+- `logs/snapshots/` — terminal snapshots on errors/SIGINT
 
 ## 📋 CLI
 ```bash
 python3 main.py                    # Menu interativo
-python3 main.py --target h1.com    # Scan direto
 python3 main.py --watchdog         # Modo autônomo 24/7
 python3 main.py --dry-run          # Preview sem executar ferramentas
 python3 main.py --resume <id>      # Retomar scan interrompido
-python3 main.py --export csv       # Exportar findings
-python3 main.py --update           # Atualizar ferramentas PDTM
+python3 main.py --export csv       # Exportar findings (csv|xlsx|xml)
 ```
 
 ## 🔜 PRÓXIMO (FASE 5)
-1. Race condition UI — auditar acessos a `_live_view_data` no watchdog
-2. Teste de integração real com ferramentas instaladas
-3. bbscope fallback gracioso no watchdog
-4. CENSYS_API_ID/SECRET no .env real
-
-
-## 📤 OUTPUTS
-- `recon/baselines/<handle>_findings.jsonl` — raw Nuclei JSONL
-- `recon/baselines/<handle>_live.txt.js_secrets` — JS secrets (raw lines)
-- `reports/<handle>_<date>_report.md` — submission-ready Markdown
-
-## 🗄️ KEY FILES
-| File | Role |
-|------|------|
-| `core/orchestrator.py` | MissionRunner + ProOrchestrator |
-| `core/watchdog.py` | 24/7 continuous loop |
-| `core/notifier.py` | Telegram + Discord |
-| `core/reporter.py` | Bug bounty report generator |
-| `core/fp_filter.py` | FalsePositiveKiller |
-| `core/diff_engine.py` | Baseline diff |
-| `core/rate_limiter.py` | Per-target throttling |
-| `core/checkpoint.py` | Scan resume |
-| `core/exporter.py` | CSV/XLSX/XML export |
-| `core/dry_run.py` | Dry-run preview |
-| `recon/engines.py` | Tool wrappers |
-| `recon/js_hunter.py` | JS secret extractor |
-| `recon/platforms.py` | H1/BC/IT API |
-| `recon/tool_discovery.py` | Dynamic binary discovery |
-
-## 🔒 SECURITY CONSTRAINTS
-- All subprocess calls use list form (no shell=True).
-- API keys never logged (stored in Session.headers).
-- Rate limiting enforced per-target (1 req/s default).
-- MAX_SUBS_PER_TARGET = 2000 (guards against runaway scans).
-
-## 📋 CLI FLAGS
-```
-python3 main.py                    # Interactive menu
-python3 main.py --watchdog         # 24/7 autonomous mode
-python3 main.py --dry-run          # Preview targets, no execution
-python3 main.py --resume <id>      # Resume from checkpoint
-python3 main.py --export csv|xlsx|xml  # Export all findings
-```
-
-## STATUS
-- Pipeline: fully wired end-to-end (recon → vuln → notify → report).
-- Notifications: live (Telegram + Discord).
-- Reports: auto-generated after every scan.
-- Checkpoints: save/load implemented.
-- Export: CSV/XML/XLSX from CLI.
-
+1. Teste de integração real com ferramentas instaladas (Nuclei stats validation)
+2. bbscope fallback gracioso no watchdog
+3. Terminal em telas pequenas (<24 linhas): guard no scroll region
+4. Watchdog mode: H1/BC/IT platform API untested (bbscope not installed)

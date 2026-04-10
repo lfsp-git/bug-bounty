@@ -1,6 +1,48 @@
 # Hunt3r Changelog
 
-## v1.0-EXCALIBUR — Session 2 Bug Fixes (current) — `ac59c92`
+## v1.0-EXCALIBUR — Session 3 Hardening (current) — `2d00398`+
+
+### CTRL+C / Graceful Shutdown
+- `MissionRunner.run()` catches `KeyboardInterrupt`, calls `ui_mission_footer()` to clean up live view before re-raising
+- `state_manual()` and `state_list()` catch `KeyboardInterrupt` from `start_mission()` — user returns to menu instead of seeing traceback
+- `main()` loop wrapped in `try/except KeyboardInterrupt` — CTRL+C at any menu point returns to menu
+- Previously: CTRL+C during Nuclei (or any tool) crashed with full traceback to terminal
+
+### Live View Race Condition Fix
+- `_live_view_loop()` wrapped in `try/except` — prevents thread death on any render error
+- `_render_live_view()` now snapshots `_live_view_data` inside `_live_view_lock` before rendering
+  (was reading dict outside lock — race condition with `_nuclei_progress_callback`)
+- Eliminated "Exception in thread Thread-1 (_live_view_loop)" crash during Nuclei scan
+
+### JS Secrets Pipeline (JSONL + Severity Routing)
+- `run_js_hunter()` now outputs JSONL format: `{type, value, source, url, severity}`
+  (was plaintext — `NotificationDispatcher.alert_js_secrets` silently failed to parse)
+- `SECRET_SEVERITY` dict maps 14 secret types → `critical/high/medium/low`
+- `alert_js_secrets()` routes by severity: Critical/High/Medium → Telegram, Low → Discord
+  (was sending all to Telegram regardless of severity)
+
+### Nuclei Improvements
+- Non-JSON stderr lines now logged at INFO level (errors, template loading, debug output)
+  (was silently discarded — impossible to debug Nuclei failures)
+- Uses `Popen` + `-stats -sj` for real-time progress in live view
+- Timeout: 3600s (1 hour — vulns at any cost)
+
+### Notification Routing
+- `alert_nuclei()`: Medium severity now routes to Telegram (was only Critical/High)
+- Low/Info now routes to Discord only (was sending all severities to Discord)
+- Added Medium emoji 🟡 in Telegram alerts (was falling back to ⚪)
+
+### Code Quality
+- Fixed FD leaks in `_count_lines()` and `_count_findings()` — now use `with` statement
+- Output file truncation at start of every tool run (dedup across re-scans)
+- `run_js_hunter()` also accepts `.mjs` and `.ts` files
+
+### Tests
+- **52 tests, 52 PASS** (36 unit + 16 integration) at every commit
+
+---
+
+## v1.0-EXCALIBUR — Session 2 Bug Fixes — `ac59c92`
 
 ### Nuclei
 - Fixed `-uau` (invalid flag) → removed (caused silent 0s exit)

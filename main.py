@@ -143,7 +143,10 @@ def state_manual(orch: ProOrchestrator) -> None:
     except EOFError:
         ans = ""
     if ans.lower() == "s":
-        orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
+        try:
+            orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
+        except KeyboardInterrupt:
+            ui_log("SCAN", "Scan cancelado pelo usuario.", Colors.WARNING)
         try:
             input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
         except (EOFError, KeyboardInterrupt):
@@ -169,10 +172,13 @@ def state_list(orch: ProOrchestrator) -> None:
     except EOFError:
         ans = ""
     if ans.lower() == "s":
-        orch.start_mission(sel["handle"], sel["domains"], f"recon/db/{sel['handle']}", sel["score"])
+        try:
+            orch.start_mission(sel["handle"], sel["domains"], f"recon/db/{sel['handle']}", sel["score"])
+        except KeyboardInterrupt:
+            ui_log("SCAN", "Scan cancelado pelo usuario.", Colors.WARNING)
         try:
             input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             pass
 
 
@@ -251,32 +257,36 @@ def main() -> None:
     orch = ProOrchestrator(IntelMiner(ai))
 
     while True:
-        ui_clear()
-        ui_banner()
-        ch = ui_main_menu()
-        if not ch:
-            ui_log("SAINDO", "Sem entrada. Encerrando.", Colors.WARNING)
-            break
         try:
-            choice = int(ch)
-        except ValueError:
-            choice = -1
-
-        if choice == 0:
-            ui_log("SAINDO", "Ate logo.", Colors.WARNING)
-            break
-        elif choice == 1:
-            state_platforms(orch)
-        elif choice == 2:
-            state_manual(orch)
-        elif choice == 3:
-            state_list(orch)
-        else:
-            ui_log("ERRO", "Opcao invalida.", Colors.ERROR)
+            ui_clear()
+            ui_banner()
+            ch = ui_main_menu()
+            if not ch:
+                ui_log("SAINDO", "Sem entrada. Encerrando.", Colors.WARNING)
+                break
             try:
-                input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
-            except EOFError:
-                pass
+                choice = int(ch)
+            except ValueError:
+                choice = -1
+
+            if choice == 0:
+                ui_log("SAINDO", "Ate logo.", Colors.WARNING)
+                break
+            elif choice == 1:
+                state_platforms(orch)
+            elif choice == 2:
+                state_manual(orch)
+            elif choice == 3:
+                state_list(orch)
+            else:
+                ui_log("ERRO", "Opcao invalida.", Colors.ERROR)
+                try:
+                    input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
+                except EOFError:
+                    pass
+        except KeyboardInterrupt:
+            print()  # newline after ^C
+            continue  # back to menu
 
 
 if __name__ == "__main__":
