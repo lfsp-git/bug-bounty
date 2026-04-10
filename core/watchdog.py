@@ -12,6 +12,8 @@ import logging
 import shutil
 import subprocess
 import shlex
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from core.config import to_set  # Unified deduplication
 
@@ -31,6 +33,7 @@ GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
 SLEEP_MIN = 14400  # 4h
 SLEEP_MAX = 21600  # 6h
 MAX_TARGETS_PER_CYCLE = 50
+MAX_PARALLEL_WORKERS = 3  # Process 3 targets in parallel
 
 # Blacklist reduzida para focar em alvos lucrativos
 TARGET_BLACKLIST = ['ui', 'spotify', 'gitlab', 'coinbase']
@@ -272,6 +275,26 @@ def _record_scan_result(handle, has_changes):
     # No explicit return needed
 
 
+def _scan_target_parallel_wrapper(args):
+    """Wrapper for ThreadPoolExecutor to scan a single target thread-safely."""
+    orch, target, idx, total = args
+    handle = target.get('handle', 'unknown')
+    try:
+        if _should_process_target(handle):
+            ui_log("WATCHDOG", f"[{idx}/{total}] Processando: {target['original_handle']}", Colors.PRIMARY)
+            ui_set_mission_meta(target['original_handle'], idx, total)
+            results = _scan_target(orch, target)
+            has_changes = bool(results.get('subdomains', 0)) if isinstance(results, dict) else False
+            _record_scan_result(handle, has_changes)
+            return {'success': True, 'handle': handle, 'changes': has_changes}
+        else:
+            ui_log("WATCHDOG", f"[{idx}/{total}] Pulando (histórico recente): {target['original_handle']}", Colors.DIM)
+            return {'success': False, 'handle': handle, 'reason': 'cached'}
+    except Exception as e:
+        ui_log("ERR", f"Erro em {target.get('original_handle', 'unknown')}: {e}", Colors.ERROR)
+        return {'success': False, 'handle': handle, 'reason': str(e)}
+
+
 def run_watchdog():
     ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo.", Colors.SUCCESS)
     while True:
@@ -282,31 +305,34 @@ def run_watchdog():
         if wildcards:
             # Prioritize targets by bounty program potential (recency + budget)
             wildcards = _prioritize_targets_by_bounty_potential(wildcards)
-            ui_log("WATCHDOG", f"Processing {len(wildcards)} targets in priority order", Colors.DIM)
+            ui_log("WATCHDOG", f"Processing {len(wildcards)} targets in priority order ({MAX_PARALLEL_WORKERS} parallel)", Colors.DIM)
             
             from core.scanner import ProOrchestrator
             from core.ai import IntelMiner
             from core.ai import AIClient
-            orch = ProOrchestrator(IntelMiner(AIClient()))
-            for idx, t in enumerate(wildcards, 1):
+            
+            # Create one orchestrator per worker thread to avoid race conditions
+            total = len(wildcards)
+            with ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
+                futures = []
+                for idx, target in enumerate(wildcards, 1):
+                    orch = ProOrchestrator(IntelMiner(AIClient()))
+                    future = executor.submit(_scan_target_parallel_wrapper, (orch, target, idx, total))
+                    futures.append(future)
+                
+                # Collect results as they complete
+                completed = 0
                 try:
-                    handle = t['handle']
-                    # Decide se deve processar
-                    if _should_process_target(handle):
-                        ui_log("WATCHDOG", f"Processando: {t['original_handle']}", Colors.PRIMARY)
-                        ui_set_mission_meta(t['original_handle'], idx, len(wildcards))
-                        results = _scan_target(orch, t)
-                        # Determine if there were changes based on presence of subdomains
-                        has_changes = bool(results.get('subdomains', 0)) if isinstance(results, dict) else False
-                        _record_scan_result(handle, has_changes)
-                    else:
-                        ui_log("WATCHDOG", f"Pulando (histórico recente): {t['original_handle']}", Colors.DIM)
+                    for future in as_completed(futures):
+                        result = future.result()
+                        completed += 1
+                        if result.get('success'):
+                            ui_log("WATCHDOG", f"✓ Concluído: {result['handle']}", Colors.SUCCESS)
                 except KeyboardInterrupt:
-                    ui_log("WATCHDOG", "Interrupção recebida. Encerrando o Watchdog...", Colors.WARNING)
+                    ui_log("WATCHDOG", "Interrupção recebida. Cancelando workers...", Colors.WARNING)
+                    executor.shutdown(wait=False)
                     return
-                except Exception as e:
-                    ui_log("ERR", f"Erro em {t.get('original_handle', 'unknown')}: {e}", Colors.ERROR)
-            # End of processing wildcards
+        
         # Sleep between cycles
         secs = random.randint(SLEEP_MIN, SLEEP_MAX)
         ui_log("WATCHDOG", f"Dormindo até {(datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')}", Colors.DIM)
