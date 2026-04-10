@@ -286,6 +286,17 @@ def _scan_target_parallel_wrapper(args):
             results = _scan_target(orch, target)
             has_changes = bool(results.get('subdomains', 0)) if isinstance(results, dict) else False
             _record_scan_result(handle, has_changes)
+            
+            # Log scan results
+            if results and isinstance(results, dict):
+                subs = results.get('subdomains', 0)
+                live = results.get('alive', 0)
+                endpoints = results.get('endpoints', 0)
+                secrets = results.get('js_secrets', 0)
+                vulns = results.get('vulns', 0)
+                ui_log("RESULTADO", f"[{idx}/{total}] {target['original_handle']}: {subs} subs, {live} live, {endpoints} endpoints, {secrets} secrets, {vulns} vulns", 
+                       Colors.SUCCESS if vulns > 0 else Colors.INFO)
+            
             return {'success': True, 'handle': handle, 'changes': has_changes}
         else:
             ui_log("WATCHDOG", f"[{idx}/{total}] Pulando (histórico recente): {target['original_handle']}", Colors.DIM)
