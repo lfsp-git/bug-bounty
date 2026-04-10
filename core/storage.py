@@ -24,8 +24,9 @@ class ReconDiff:
 
     @classmethod
     def _path(cls, handle: str) -> str:
-        os.makedirs(BASELINES_DIR, exist_ok=True)
-        return os.path.join(BASELINES_DIR, f"{handle}.json")
+        target_dir = os.path.join(BASELINES_DIR, handle)
+        os.makedirs(target_dir, exist_ok=True)
+        return os.path.join(target_dir, "baseline.json")
 
     @classmethod
     def load_baseline(cls, handle: str) -> Optional[Dict]:
@@ -41,8 +42,7 @@ class ReconDiff:
 
     @classmethod
     def save_baseline(cls, handle: str, data: Dict) -> None:
-        path = cls._path(handle)
-        os.makedirs(BASELINES_DIR, exist_ok=True)
+        path = cls._path(handle)  # _path already creates target_dir
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f)

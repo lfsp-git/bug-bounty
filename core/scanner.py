@@ -25,7 +25,7 @@ from core.ai import AIClient
 from core.storage import ReconDiff
 
 # Rate limiting
-from core.config import get_rate_limiter, RATE_LIMIT, REQUESTS_PER_SECOND, MAX_SUBS_PER_TARGET
+from core.config import get_rate_limiter, RATE_LIMIT, REQUESTS_PER_SECOND, MAX_SUBS_PER_TARGET, NUCLEI_RATE_LIMIT
 
 # Notification & Reporting
 from core.notifier import NotificationDispatcher
@@ -61,7 +61,7 @@ def _record_tool_time(label: str, elapsed: float):
     except (IOError, TypeError) as e:
         logging.warning(f"Failed to save tool times: {e}")
 
-def _run_with_progress(label, fn, live_tail_pipe=None):
+def _run_with_progress(label, fn, live_tail_pipe=None, extra_stats_fn=None):
     """Execute tool with progress spinner. Returns True on success, False on error."""
     start_time = time.time()
     stop_event = threading.Event()
@@ -73,7 +73,8 @@ def _run_with_progress(label, fn, live_tail_pipe=None):
         while not stop_event.is_set():
             elapsed = time.time() - start_time
             eta = f" | ETA: {int(avg_time - elapsed)}s" if avg_time > elapsed else ""
-            ui_update_status(label, f"{chars[idx % 4]} {int(elapsed)}s{eta}")
+            extra = extra_stats_fn() if extra_stats_fn else ""
+            ui_update_status(label, f"{chars[idx % 4]} {int(elapsed)}s{eta}{extra}")
             idx += 1
             time.sleep(0.2)
 
@@ -139,6 +140,18 @@ def _nuclei_progress_callback(stats):
         d["requests_total"] = stats.get("total", 0)
         d["rps"] = stats.get("rps", 0)
         d["matched"] = stats.get("matched", 0)
+
+def _nuclei_extra_stats() -> str:
+    """Return real-time Nuclei stats string for spinner display."""
+    with _live_view_lock:
+        d = _live_view_data["Nuclei"]
+        rps = d.get("rps", 0)
+        done = d.get("requests_done", 0)
+        total = d.get("requests_total", 0)
+        matched = d.get("matched", 0)
+    if total > 0:
+        return f" | Req/s {rps} | {done}/{total} | {matched} hits"
+    return ""
 
 def _count_findings(filepath):
     try:
@@ -238,8 +251,9 @@ class MissionRunner:
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
         _tool_start("Nuclei", input_count=count_lines(recon_input))
         ok = _run_with_progress("Nuclei", lambda: run_nuclei(
-            recon_input, findings_file, "cve,misconfig,takeover",
-            self.stats_pipe, progress_callback=_nuclei_progress_callback))
+            recon_input, findings_file, tags="cve,misconfig,takeover",
+            rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback),
+            extra_stats_fn=_nuclei_extra_stats)
         _tool_done("Nuclei", "vulns", findings_file) if ok else _tool_error("Nuclei")
         
         # Consolidar filtragem e validação em um passo único
@@ -376,8 +390,10 @@ Respond only: VALID or INVALID"""
 
     def run(self):
         h = self.target.get('handle', 'unknown')
-        paths = {k: f"recon/baselines/{h}_{k}.txt" for k in ["dom", "sub", "live", "unv"]}
-        paths["fin"] = f"recon/baselines/{h}_findings.jsonl"
+        target_dir = f"recon/baselines/{h}"
+        paths = {k: f"{target_dir}/{k}.txt" for k in ["dom", "sub", "live", "unv"]}
+        paths["fin"] = f"{target_dir}/findings.jsonl"
+        os.makedirs(target_dir, exist_ok=True)
 
         ui_mission_header(h, self.target.get('score', 0))
         ui_set_mission_meta(self.target.get('original_handle', h))

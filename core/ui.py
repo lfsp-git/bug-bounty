@@ -342,6 +342,27 @@ def _sigint_handler(signum, frame):
 
 signal.signal(signal.SIGINT, _sigint_handler)
 
+def _sigwinch_handler(signum, frame):
+    """Handle terminal resize: recalculate and reapply scroll region."""
+    if not _live_view_active:
+        return
+    rows = _get_terminal_rows()
+    scroll_top = _FIXED_TOP + 1
+    scroll_bottom = rows - _LIVE_VIEW_LINES
+    if scroll_bottom <= scroll_top:
+        scroll_top = 1
+        scroll_bottom = rows - _LIVE_VIEW_LINES
+    if not _stdout_lock.acquire(blocking=False):
+        return
+    try:
+        sys.stdout.write(f"\033[{scroll_top};{scroll_bottom}r")
+        sys.stdout.write(f"\033[{scroll_bottom};1H")
+        sys.stdout.flush()
+    finally:
+        _stdout_lock.release()
+
+signal.signal(signal.SIGWINCH, _sigwinch_handler)
+
 def _live_view_loop():
     """Loop principal do live view."""
     while _live_view_active:
@@ -456,8 +477,9 @@ def _render_live_view():
                 req_total = data.get("requests_total", 0)
                 if tool == "Nuclei" and req_total and req_total > 0:
                     rps = data.get("rps", 0)
-                    pct = int(ratio * 100)
-                    extra = f" {rps}r/s {pct}%"
+                    done = data.get("requests_done", 0)
+                    matched = data.get("matched", 0)
+                    extra = f"  Req/s {rps} | {done}/{req_total} | {matched} hits"
                 elif start_t and eta and eta > 0:
                     remaining = max(0, int(eta - (now - start_t)))
                     extra = f" ~{remaining}s"

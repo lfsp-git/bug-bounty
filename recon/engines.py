@@ -1,7 +1,7 @@
 import os, subprocess, shlex, re, io, shutil, sys, threading, json
 import logging
 from core.ui import ui_log, Colors
-from core.config import get_tool_timeout  # Centralized timeouts
+from core.config import get_tool_timeout, NUCLEI_RATE_LIMIT, NUCLEI_CONCURRENCY  # Centralized config
 from recon.tool_discovery import find_tool
 
 PDTM = os.environ.get("HUNT3R_PDTM_PATH", os.path.expanduser("~/.pdtm/go/bin/"))
@@ -99,13 +99,15 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
            f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2"]
     run_cmd(cmd, "Katana", output_file)
 
-def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50, progress_callback=None):
+def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=None, progress_callback=None):
     """Run Nuclei with -stats -sj for real-time progress via stderr streaming.
     
     Uses Popen instead of run_cmd to parse JSON stats from stderr in real-time.
     No -silent: allows -stats -sj to output progress data.
     Timeout: controlled by config (default 3600s — vulns at any cost).
     """
+    if rate_limit is None:
+        rate_limit = NUCLEI_RATE_LIMIT
     exe = find_tool("nuclei")
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -128,10 +130,10 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50,
     open(output_file, 'w').close()
 
     # -duc: skip update check. -stats -sj: JSON stats to stderr.
-    # -rl: rate limit. -c 25: concurrency. -timeout 5: per-request HTTP cap.
+    # -rl: rate limit. -c: concurrency. -timeout 5: per-request HTTP cap.
     # -severity: critical/high/medium only.
     cmd = [exe, "-l", input_file, "-o", output_file,
-           "-duc", "-stats", "-sj", "-rl", str(rate_limit), "-c", "25",
+           "-duc", "-stats", "-sj", "-rl", str(rate_limit), "-c", str(NUCLEI_CONCURRENCY),
            "-timeout", "5", "-severity", "critical,high,medium"]
     if tags:
         cmd.extend(["-tags", tags])

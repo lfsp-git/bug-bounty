@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 # Scan constants
 # ---------------------------------------------------------------------------
 MAX_SUBS_PER_TARGET: int = 2000
-RATE_LIMIT: int = 50                     # requests/s for tools (subfinder/dnsx/httpx)
+RATE_LIMIT: int = 100                    # requests/s for tools (subfinder/dnsx/httpx/katana)
+NUCLEI_RATE_LIMIT: int = 150             # requests/s for nuclei (higher throughput OK)
+NUCLEI_CONCURRENCY: int = 50            # parallel templates (4 vCPU → 50 safe)
 REQUESTS_PER_SECOND: float = 1.0        # per-target inter-tool throttle
 
 # ---------------------------------------------------------------------------
@@ -60,12 +62,12 @@ AUTO_UPDATE_ON_START: bool = True
 # Tool timeouts (seconds)
 # ---------------------------------------------------------------------------
 TOOL_TIMEOUTS: dict = {
-    "subfinder": 60,
-    "dnsx": 60,
+    "subfinder": 120,
+    "dnsx": 120,
     "uncover": 90,
-    "httpx": 120,
-    "katana": 180,
-    "js_hunter": 30,
+    "httpx": 180,
+    "katana": 300,
+    "js_hunter": 60,
     "nuclei": 3600,
     "api_request": 15,
     "ai_inference_short": 30,
