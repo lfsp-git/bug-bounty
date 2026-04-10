@@ -6,6 +6,8 @@ import os
 import sys
 import time
 import re
+import atexit
+import signal
 from datetime import datetime
 import threading
 import logging
@@ -184,15 +186,41 @@ def _start_live_view():
     _live_view_thread = threading.Thread(target=_live_view_loop, daemon=True)
     _live_view_thread.start()
 
+def _terminal_cleanup():
+    """Full terminal restore: erase live view area, reset scroll region, show cursor."""
+    if not sys.stdout.isatty():
+        return
+    try:
+        rows = _get_terminal_rows()
+        top = rows - _LIVE_VIEW_LINES + 1
+        out = sys.stdout
+        out.write("\033[r")               # reset scroll region (full screen)
+        out.write(f"\033[{top};1H")       # jump to start of live view area
+        for _ in range(_LIVE_VIEW_LINES):
+            out.write("\033[K\n")         # erase each live view line
+        out.write(f"\033[{top};1H")       # park cursor at start of erased area
+        out.write("\033[?25h")            # ensure cursor is visible
+        out.flush()
+    except OSError:
+        pass
+
 def _stop_live_view():
-    """Para o live view e restaura scroll region completo."""
+    """Para o live view e restaura o terminal por completo."""
     global _live_view_active
     _live_view_active = False
     if _live_view_thread:
         _live_view_thread.join(timeout=1)
-    if sys.stdout.isatty():
-        sys.stdout.write("\033[r")   # reset scroll region to full screen
-        sys.stdout.flush()
+    _terminal_cleanup()
+
+# Register cleanup on normal exit and SIGINT (CTRL+C)
+atexit.register(_terminal_cleanup)
+
+def _sigint_handler(signum, frame):
+    _terminal_cleanup()
+    # Re-raise as KeyboardInterrupt so callers can catch it normally
+    raise KeyboardInterrupt
+
+signal.signal(signal.SIGINT, _sigint_handler)
 
 def _live_view_loop():
     """Loop principal do live view."""
