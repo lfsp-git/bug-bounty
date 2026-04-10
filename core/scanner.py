@@ -368,8 +368,9 @@ Respond only: VALID or INVALID"""
                 'js_secrets': _live_view_data["JS Hunter"]["secrets"],
                 'vulns': _live_view_data["Nuclei"]["vulns"],
             }
-        ui_scan_summary(results)
+        # Stop live view FIRST so its thread doesn't race with ui_scan_summary prints
         ui_mission_footer()
+        ui_scan_summary(results)
         
         # Salva baseline para diff engine
         ReconDiff.save_baseline(h, results)

@@ -77,9 +77,9 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
     run_cmd(cmd, "Katana", output_file)
 
 def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=100):
-    # -uau was invalid in v3 (caused immediate exit). -t is template path, use -tags for tag filters.
+    # -duc: skip update check (saves ~5s startup). -timeout 5: per-template cap to avoid hangs.
     cmd = [find_tool("nuclei"), "-l", input_file, "-o", output_file,
-           "-silent", "-stats", "-sj", "-rl", str(rate_limit)]
+           "-duc", "-silent", "-stats", "-sj", "-rl", str(rate_limit), "-timeout", "5"]
     if tags:
         cmd.extend(["-tags", tags])
     run_cmd(cmd, "Nuclei", output_file, stats_pipe=stats_pipe)

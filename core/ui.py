@@ -166,8 +166,10 @@ def ui_log(module: str, message: str, color=Colors.RESET):
     timestamp = datetime.now().strftime('%H:%M:%S')
     icon = ICONS.get(module.upper(), ">>")
     
-    # \r\033[K limpa a linha atual, resolvendo o problema de colisão do spinner
-    print(f"\r\033[K[{timestamp}] {icon} {color}{module}: {message}{Colors.RESET}")
+    # Acquire stdout lock so live view thread can't corrupt cursor during our write
+    with _stdout_lock:
+        # \r\033[K clears the current line (resolves spinner collision)
+        print(f"\r\033[K[{timestamp}] {icon} {color}{module}: {message}{Colors.RESET}")
     
     # Buffer for snapshots + file log (ANSI-stripped)
     _buffer_append(module, message)
@@ -180,8 +182,9 @@ def ui_log(module: str, message: str, color=Colors.RESET):
 def ui_update_status(step: str, detail: str, color=Colors.PRIMARY):
     icon = ICONS.get(step.upper(), "[*]")
     # No newline: overwrite same line so spinner doesn't scroll the terminal
-    sys.stdout.write(f"\r\033[K{color}{icon} {step} {detail}{Colors.RESET}")
-    sys.stdout.flush()
+    with _stdout_lock:
+        sys.stdout.write(f"\r\033[K{color}{icon} {step} {detail}{Colors.RESET}")
+        sys.stdout.flush()
 
 def ui_clear():
     # Avoid invoking clear when TERM is not set (common in CI/testing)
@@ -232,6 +235,7 @@ _live_view_data = {
 }
 _live_view_meta = {"target": "", "current": 0, "total": 0}
 _live_view_lock = threading.RLock()  # Re-entrant lock prevents deadlocks from nested acquire calls
+_stdout_lock = threading.Lock()      # Serializes all stdout writes to prevent cursor corruption
 
 def ui_set_mission_meta(target: str, current: int = 0, total: int = 0):
     """Update live view header with current target and progress indicators."""
@@ -333,6 +337,10 @@ def _render_live_view():
         _last_live_view_render = current_render
         _live_view_last_update = current_time
 
+    # Skip render if main thread is printing — avoids cursor race condition
+    if not _stdout_lock.acquire(blocking=False):
+        return
+    try:
         rows = _get_terminal_rows()
         top_of_view = rows - _LIVE_VIEW_LINES + 1  # first line of live view area
 
@@ -402,6 +410,8 @@ def _render_live_view():
         scroll_bottom = rows - _LIVE_VIEW_LINES
         out.write(f"\033[{scroll_bottom};1H")
         out.flush()
+    finally:
+        _stdout_lock.release()
 
 def ui_mission_header(handle: str, score: int = 0):
     global _MISSION_START_TIME
