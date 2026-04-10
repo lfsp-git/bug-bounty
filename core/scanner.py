@@ -21,6 +21,9 @@ from recon.engines import (
 # Tech Detection
 from recon.tech_detector import TechDetector
 
+# Custom Templates
+from recon.custom_templates import load_custom_templates, get_custom_template_tags
+
 # AI Imports
 from core.ai import AIClient
 
@@ -207,10 +210,11 @@ def _auto_cleanup(target_dir: str):
 
 class MissionRunner:
     """Handles a single mission lifecycle: prepare, run vulnerability phase, and finalize."""
-    def __init__(self, target_data, stats_pipe=None, config=None):
+    def __init__(self, target_data, stats_pipe=None, config=None, custom_template_paths=None):
         self.target = target_data
         self.stats_pipe = stats_pipe
         self.config = config or {}
+        self.custom_template_paths = custom_template_paths or []
 
     def _run_recon_phase(self, paths, domains):
         """Executa a fase de reconhecimento: subfinder, dnsx, uncover, httpx."""
@@ -318,7 +322,8 @@ class MissionRunner:
         _tool_start("Nuclei", input_count=count_lines(recon_input))
         ok = _run_with_progress("Nuclei", lambda: run_nuclei(
             recon_input, findings_file, tags=nuclei_tags,
-            rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback),
+            rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback,
+            custom_templates=self.custom_template_paths),
             extra_stats_fn=_nuclei_extra_stats)
         _tool_done("Nuclei", "vulns", findings_file) if ok else _tool_error("Nuclei")
         
@@ -557,6 +562,13 @@ class ProOrchestrator:
     def __init__(self, config):
         self.config = config
         self.intel: IntelMiner | None = None
+        # Initialize custom templates once on startup
+        try:
+            self.custom_template_paths = load_custom_templates()
+            ui_log("INIT", f"Loaded {len(self.custom_template_paths)} Hunt3r custom templates", Colors.SUCCESS)
+        except Exception as e:
+            ui_log("ERR", f"Failed to load custom templates: {e}", Colors.WARNING)
+            self.custom_template_paths = []
 
     def _ensure_intel(self):
         """Lazily initialize IntelMiner (requires AIClient)."""
@@ -588,5 +600,5 @@ class ProOrchestrator:
         else:
             raise TypeError("start_mission expects either (target_data_dict[, stats_pipe]) or (handle, domains, db_path, score[, stats_pipe])")
 
-        runner = MissionRunner(target, stats_pipe, config=self.config)
+        runner = MissionRunner(target, stats_pipe, config=self.config, custom_template_paths=self.custom_template_paths)
         runner.run()
