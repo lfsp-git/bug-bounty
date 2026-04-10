@@ -296,9 +296,9 @@ def _scan_target_parallel_wrapper(args):
 
 
 def run_watchdog():
+    ui_clear_and_banner()  # Only clear and show banner once at startup
     ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo.", Colors.SUCCESS)
     while True:
-        ui_clear_and_banner()
         ts = datetime.now().strftime('%H:%M')
         ui_log("WATCHDOG", f"=== CICLO {ts} ===", Colors.BOLD)
         wildcards = _fetch_global_wildcards()
