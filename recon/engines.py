@@ -67,7 +67,8 @@ def run_uncover(domains, output_file):
     run_cmd([find_tool("uncover"), "-q", ",".join(domains), "-o", output_file, "-silent"], "Uncover", output_file)
 
 def run_httpx(input_file, output_file, rate_limit=100):
-    run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-ua", "random", f"-rate-limit={rate_limit}"], "HTTPX", output_file)
+    # -random-agent is default true; -ua is not a valid flag (caused 0-second silent exit)
+    run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-rate-limit", str(rate_limit)], "HTTPX", output_file)
 
 def run_katana_surgical(input_file, output_file, rate_limit=100):
     """Função que estava faltando no import do Pylance"""
