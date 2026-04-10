@@ -7,9 +7,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
-recon/intel_cache.json
-recon/h1_cache.json
-recon/tool_times.json
+recon/baselines
 .last_update_cache
 config/selected_model.json
 .claude/
@@ -19,3 +17,4 @@ resume-*.cfg
 resume.cfg
 .aider*
 .kilo*
+/reports
