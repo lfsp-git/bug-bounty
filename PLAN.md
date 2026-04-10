@@ -57,7 +57,7 @@
 - **Impact**: 2-3x better ROI
 - **Commit**: `7e87031`
 
-### ✅ FASE 5A: Multi-threaded Watchdog
+### ✅ FASE 5: Multi-threaded Watchdog
 **Goal**: Process multiple targets in parallel
 
 - **Implementation**: Modified `core/watchdog.py`
@@ -69,7 +69,7 @@
 - **Impact**: 3-5x faster watchdog cycles (8h → 2-3h)
 - **Commit**: `d60f27e`
 
-### ✅ FASE 5B: Discord & Telegram Webhooks
+### ✅ FASE 6: Discord & Telegram Webhooks
 **Goal**: Real-time alerting on critical findings
 
 - **Status**: **ALREADY FULLY IMPLEMENTED** in existing codebase
@@ -86,7 +86,7 @@
 - **Impact**: <30s alert latency (vs 5-10 min email)
 - **No commit needed**: Merged into Phase 5 multi-commit
 
-### ✅ FASE 5C: Custom Nuclei Templates
+### ✅ FASE 7: Custom Nuclei Templates
 **Goal**: Add Hunt3r-specific vulnerability detection patterns
 
 - **Implementation**: Created `recon/custom_templates.py` (234 lines)
@@ -166,25 +166,6 @@
 - **Expected Impact**: -40% false positives, +90% precision
 - **Timeline**: 1-2 weeks
 - **Skills**: ML basics, scikit-learn/LightGBM, data engineering
-
----
-
-### FASE 9: Web Dashboard (Deferred)
-**Goal**: Visual interface for monitoring Hunt3r operations
-
-- Requires: Flask, SQLite, React/Vue frontend
-- Status: Deferred until ML filtering complete
-- Impact: High (easier operations monitoring)
-
-### FASE 10: API Server (Deferred)
-**Goal**: RESTful API for external integrations
-
-- Provides: `/api/targets`, `/api/findings`, `/api/reports`
-- Requires: FastAPI, PostgreSQL, JWT auth
-- Status: Deferred for later expansion
-- Impact: Medium (third-party integrations)
-
----
 
 ## 🛠️ TECHNICAL DEBT & KNOWN ISSUES
 
