@@ -1,0 +1,15 @@
+http:
+- matchers:
+  - part: header
+    regex:
+    - Authorization:\s*Bearer\s*ey[a-zA-Z0-9_-]+
+    type: regex
+  method: GET
+  path:
+  - '{{BaseURL}}/api/'
+id: hunt3r-weak-jwt
+info:
+  author: hunt3r
+  description: Detect JWTs using weak algorithms or no signature verification
+  name: Weak JWT Configuration
+  severity: high

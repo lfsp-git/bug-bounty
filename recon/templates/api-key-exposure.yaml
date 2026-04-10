@@ -1,0 +1,21 @@
+http:
+- matchers:
+  - regex:
+    - AKIA[0-9A-Z]{16}
+    - sk_live_[0-9a-zA-Z]{24,}
+    - AIzaSy[a-zA-Z0-9_-]{31}
+    - github_pat_[a-zA-Z0-9]{22,}
+    type: regex
+  method: GET
+  path:
+  - '{{BaseURL}}/api/config'
+  - '{{BaseURL}}/config.json'
+  - '{{BaseURL}}/config.js'
+  - '{{BaseURL}}/.env'
+  - '{{BaseURL}}/debug'
+id: hunt3r-api-key-exposure
+info:
+  author: hunt3r
+  description: Detect leaked API keys, AWS credentials, Stripe keys in responses
+  name: API Key Exposure in Responses
+  severity: critical

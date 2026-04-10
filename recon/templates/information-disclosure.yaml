@@ -1,0 +1,19 @@
+http:
+- matchers:
+  - regex:
+    - '(Apache|nginx|Microsoft-IIS)/[0-9.]+ '
+    - 'PHP/[0-9.]+ '
+    - at .*\.java:\d+
+    - Traceback.*File.*line \d+
+    type: regex
+  method: GET
+  path:
+  - '{{BaseURL}}/nonexistent'
+  - '{{BaseURL}}/invalid.php'
+  - '{{BaseURL}}/test.jsp'
+id: hunt3r-info-disclosure
+info:
+  author: hunt3r
+  description: Detect sensitive info in error pages (versions, paths, stack traces)
+  name: Information Disclosure via Error Messages
+  severity: medium

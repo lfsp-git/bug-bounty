@@ -1,0 +1,22 @@
+http:
+- matchers:
+  - status:
+    - 200
+    - 403
+    type: status
+  method: GET
+  path:
+  - '{{BaseURL}}/debug'
+  - '{{BaseURL}}/actuator'
+  - '{{BaseURL}}/actuator/env'
+  - '{{BaseURL}}/admin'
+  - '{{BaseURL}}/console'
+  - '{{BaseURL}}/__debug__'
+  - '{{BaseURL}}/graphql'
+  - '{{BaseURL}}/graphiql'
+id: hunt3r-debug-endpoints
+info:
+  author: hunt3r
+  description: Discover debug consoles, actuators, and admin endpoints
+  name: Exposed Debug Endpoints
+  severity: high

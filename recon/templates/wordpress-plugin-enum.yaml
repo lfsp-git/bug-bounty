@@ -1,0 +1,20 @@
+http:
+- matchers:
+  - status:
+    - 200
+    - 403
+    type: status
+  method: GET
+  path:
+  - '{{BaseURL}}/wp-content/plugins/'
+  - '{{BaseURL}}/wp-content/plugins/akismet/'
+  - '{{BaseURL}}/wp-content/plugins/jetpack/'
+  - '{{BaseURL}}/wp-content/plugins/yoast-seo/'
+  - '{{BaseURL}}/wp-content/plugins/woocommerce/'
+id: hunt3r-wp-plugin-enum
+info:
+  author: hunt3r
+  description: Detect WordPress plugins and known vulnerabilities via popular plugins
+    list
+  name: WordPress Plugin Enumeration & Vulnerability Detection
+  severity: medium

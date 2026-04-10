@@ -1,0 +1,16 @@
+http:
+- matchers:
+  - part: body
+    regex:
+    - https://[a-z0-9-]+\.s3(\.us-west-2)?\.amazonaws\.com
+    - s3\.amazonaws\.com/[a-z0-9-]+
+    type: regex
+  method: GET
+  path:
+  - '{{BaseURL}}/'
+id: hunt3r-s3-exposure
+info:
+  author: hunt3r
+  description: Detect publicly accessible S3 buckets referenced in HTML/JS
+  name: AWS S3 Bucket Public Access
+  severity: critical

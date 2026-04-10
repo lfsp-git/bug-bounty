@@ -1,0 +1,18 @@
+http:
+- headers:
+    Origin: https://attacker.com
+  matchers:
+  - part: header
+    regex:
+    - Access-Control-Allow-Origin:\s*\*
+    type: regex
+  method: OPTIONS
+  path:
+  - '{{BaseURL}}/'
+id: hunt3r-cors-misc
+info:
+  author: hunt3r
+  description: Detect overly permissive CORS headers allowing unauthorized cross-origin
+    access
+  name: CORS Misconfiguration Detection
+  severity: high
