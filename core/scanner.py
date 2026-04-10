@@ -111,7 +111,7 @@ def _count_lines(filepath):
 def _tool_start(name: str, input_count: int = 0):
     """Mark tool as running in live view with start_time, historical ETA, and input count."""
     history = _load_tool_times().get(name, [])
-    avg = sum(history) / len(history) if history else 60.0
+    avg = sum(history) / len(history) if history else 0.0  # 0 = no history, no ETA shown
     with _live_view_lock:
         _live_view_data[name]["status"] = "running"
         _live_view_data[name]["start_time"] = time.time()
@@ -126,6 +126,14 @@ def _tool_done(name: str, count_key: str, count_file: str = ""):
         _live_view_data[name]["start_time"] = None
         _live_view_data[name][count_key] = count
 
+def _tool_cached(name: str, count_key: str, count_file: str = ""):
+    """Mark tool as served from cache in live view."""
+    count = _count_lines(count_file) if count_file and os.path.exists(count_file) else 0
+    with _live_view_lock:
+        _live_view_data[name]["status"] = "cached"
+        _live_view_data[name]["start_time"] = None
+        _live_view_data[name][count_key] = count
+
 def _tool_error(name: str):
     """Mark tool as error in live view."""
     with _live_view_lock:
@@ -134,12 +142,18 @@ def _tool_error(name: str):
 
 def _nuclei_progress_callback(stats):
     """Update live view with Nuclei stats from -sj JSON output."""
+    def _to_int(val):
+        try: return int(val or 0)
+        except (TypeError, ValueError): return 0
+    def _to_float(val):
+        try: return float(val or 0)
+        except (TypeError, ValueError): return 0.0
     with _live_view_lock:
         d = _live_view_data["Nuclei"]
-        d["requests_done"] = stats.get("requests", stats.get("sent", 0))
-        d["requests_total"] = stats.get("total", 0)
-        d["rps"] = stats.get("rps", 0)
-        d["matched"] = stats.get("matched", 0)
+        d["requests_done"] = _to_int(stats.get("requests", stats.get("sent", 0)))
+        d["requests_total"] = _to_int(stats.get("total", 0))
+        d["rps"] = _to_float(stats.get("rps", 0))
+        d["matched"] = _to_int(stats.get("matched", 0))
 
 def _nuclei_extra_stats() -> str:
     """Return real-time Nuclei stats string for spinner display."""
@@ -149,7 +163,7 @@ def _nuclei_extra_stats() -> str:
         done = d.get("requests_done", 0)
         total = d.get("requests_total", 0)
         matched = d.get("matched", 0)
-    if total > 0:
+    if isinstance(total, (int, float)) and total > 0:
         return f" | Req/s {rps} | {done}/{total} | {matched} hits"
     return ""
 
@@ -161,6 +175,32 @@ def _count_findings(filepath):
         logging.debug(f"Cannot count findings in {filepath}: {e}")
         return 0
 
+_CACHE_TTL = 3600  # 1 hour
+
+def _is_cache_valid(filepath: str) -> bool:
+    """Return True if filepath exists, is non-empty, and was modified within _CACHE_TTL seconds."""
+    try:
+        if not os.path.exists(filepath): return False
+        if os.path.getsize(filepath) == 0: return False
+        return (time.time() - os.path.getmtime(filepath)) < _CACHE_TTL
+    except OSError:
+        return False
+
+def _auto_cleanup(target_dir: str):
+    """Delete stale recon files (>1h) for this target and old snapshots."""
+    cutoff = time.time() - _CACHE_TTL
+    for directory in (target_dir, "logs/snapshots"):
+        if not os.path.isdir(directory):
+            continue
+        for fname in os.listdir(directory):
+            fp = os.path.join(directory, fname)
+            try:
+                if os.path.isfile(fp) and os.path.getmtime(fp) < cutoff:
+                    os.unlink(fp)
+                    logging.debug(f"Auto-cleanup: removed {fp}")
+            except OSError:
+                pass
+
 
 class MissionRunner:
     """Handles a single mission lifecycle: prepare, run vulnerability phase, and finalize."""
@@ -171,44 +211,60 @@ class MissionRunner:
 
     def _run_recon_phase(self, paths, domains):
         """Executa a fase de reconhecimento: subfinder, dnsx, uncover, httpx."""
-        # Cria arquivo com domínios iniciais
         dom_file = paths["dom"]
         os.makedirs(os.path.dirname(dom_file), exist_ok=True)
         with open(dom_file, 'w') as f:
             for d in domains:
                 f.write(d + '\n')
-        
-        # Subfinder: encontra subdomínios
-        sub_file = paths["sub"]
+
         limiter = get_rate_limiter(REQUESTS_PER_SECOND)
-        limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("Subfinder", input_count=count_lines(dom_file))
-        ok = _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
-        _tool_done("Subfinder", "subs", sub_file) if ok else _tool_error("Subfinder")
-        
-        # DNSX: valida subdomínios e obtém IPs
+
+        # Subfinder
+        sub_file = paths["sub"]
+        if _is_cache_valid(sub_file):
+            ui_log("Subfinder", f"[Cache] {_count_lines(sub_file)} subs", Colors.DIM)
+            _tool_cached("Subfinder", "subs", sub_file)
+        else:
+            limiter.wait_and_record(self.target.get('handle', 'unknown'))
+            _tool_start("Subfinder", input_count=count_lines(dom_file))
+            ok = _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
+            _tool_done("Subfinder", "subs", sub_file) if ok else _tool_error("Subfinder")
+
+        # DNSX
         live_file = paths["live"]
         unv_file = paths["unv"]
-        limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("DNSX", input_count=count_lines(sub_file))
-        ok = _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
-        _tool_done("DNSX", "live", live_file) if ok else _tool_error("DNSX")
-        
-        # Uncover: detecta takeover potentials
-        limiter.wait_and_record(self.target.get('handle', 'unknown'))
+        if _is_cache_valid(live_file):
+            ui_log("DNSX", f"[Cache] {_count_lines(live_file)} live", Colors.DIM)
+            _tool_cached("DNSX", "live", live_file)
+        else:
+            limiter.wait_and_record(self.target.get('handle', 'unknown'))
+            _tool_start("DNSX", input_count=count_lines(sub_file))
+            ok = _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
+            _tool_done("DNSX", "live", live_file) if ok else _tool_error("DNSX")
+
+        # Uncover
         uncover_file = paths["sub"] + ".uncover"
-        _tool_start("Uncover")
-        ok = _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
-        _tool_done("Uncover", "takeovers", uncover_file) if ok else _tool_error("Uncover")
-        
-        # HTTPX: descobre endpoints (output = full URLs with protocol)
+        if _is_cache_valid(uncover_file):
+            ui_log("Uncover", f"[Cache] {_count_lines(uncover_file)} takeovers", Colors.DIM)
+            _tool_cached("Uncover", "takeovers", uncover_file)
+        else:
+            limiter.wait_and_record(self.target.get('handle', 'unknown'))
+            _tool_start("Uncover")
+            ok = _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
+            _tool_done("Uncover", "takeovers", uncover_file) if ok else _tool_error("Uncover")
+
+        # HTTPX
         httpx_file = paths["live"] + ".httpx"
-        limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("HTTPX", input_count=count_lines(live_file))
-        ok = _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
-        _tool_done("HTTPX", "endpoints", httpx_file) if ok else _tool_error("HTTPX")
-        
-        # Para obter não resolvidos, comparar com a lista de subdomínios
+        if _is_cache_valid(httpx_file):
+            ui_log("HTTPX", f"[Cache] {_count_lines(httpx_file)} endpoints", Colors.DIM)
+            _tool_cached("HTTPX", "endpoints", httpx_file)
+        else:
+            limiter.wait_and_record(self.target.get('handle', 'unknown'))
+            _tool_start("HTTPX", input_count=count_lines(live_file))
+            ok = _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
+            _tool_done("HTTPX", "endpoints", httpx_file) if ok else _tool_error("HTTPX")
+
+        # Calcular não resolvidos
         if os.path.exists(sub_file) and os.path.exists(live_file):
             with open(sub_file, 'r') as f_sub, open(live_file, 'r') as f_live:
                 subs = set(line.strip() for line in f_sub if line.strip())
@@ -232,12 +288,16 @@ class MissionRunner:
         has_httpx = os.path.exists(httpx_file) and os.path.getsize(httpx_file) > 0
         recon_input = httpx_file if has_httpx else live_file
         
-        # Katana: crawling inteligente com URLs do HTTPX
+        # Katana: crawling inteligente com URLs do HTTPX (cached)
         katana_file = paths["live"] + ".katana"
-        limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("Katana", input_count=count_lines(recon_input))
-        ok = _run_with_progress("Katana", lambda: run_katana_surgical(recon_input, katana_file, rate_limit=RATE_LIMIT))
-        _tool_done("Katana", "crawled", katana_file) if ok else _tool_error("Katana")
+        if _is_cache_valid(katana_file):
+            ui_log("Katana", f"[Cache] {_count_lines(katana_file)} URLs", Colors.DIM)
+            _tool_cached("Katana", "crawled", katana_file)
+        else:
+            limiter.wait_and_record(self.target.get('handle', 'unknown'))
+            _tool_start("Katana", input_count=count_lines(recon_input))
+            ok = _run_with_progress("Katana", lambda: run_katana_surgical(recon_input, katana_file, rate_limit=RATE_LIMIT))
+            _tool_done("Katana", "crawled", katana_file) if ok else _tool_error("Katana")
         
         # JS Hunter: extrai segredos de arquivos JavaScript
         js_secrets_file = paths["live"] + ".js_secrets"
@@ -394,6 +454,9 @@ Respond only: VALID or INVALID"""
         paths = {k: f"{target_dir}/{k}.txt" for k in ["dom", "sub", "live", "unv"]}
         paths["fin"] = f"{target_dir}/findings.jsonl"
         os.makedirs(target_dir, exist_ok=True)
+
+        # Remove stale files (>1h) for this target and old snapshots
+        _auto_cleanup(target_dir)
 
         ui_mission_header(h, self.target.get('score', 0))
         ui_set_mission_meta(self.target.get('original_handle', h))

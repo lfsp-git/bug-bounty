@@ -52,7 +52,7 @@ class FalsePositiveKiller:
         if fp_count > 0:
             with open(findings_file, 'w') as f: 
                 f.write('\n'.join(valid_findings))
-            ui_log("FP TITANIUM", f"Eliminados {fp_count} FPs ({last_fp_reason}).", Colors.ERROR)
+            ui_log("FP TITANIUM", f"Eliminados {fp_count} FPs ({last_fp_reason}).", Colors.WARNING)
             return True
         
         ui_log("FP TITANIUM", "100% puro.", Colors.SUCCESS)

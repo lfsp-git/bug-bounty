@@ -228,8 +228,8 @@ _live_view_data = {
     "DNSX":      {"status": "idle", "progress": 0, "live": 0,      "start_time": None, "eta": 0, "input_count": 0},
     "Uncover":   {"status": "idle", "progress": 0, "takeovers": 0, "start_time": None, "eta": 0, "input_count": 0},
     "HTTPX":     {"status": "idle", "progress": 0, "endpoints": 0, "start_time": None, "eta": 0, "input_count": 0},
-    "JS Hunter": {"status": "idle", "progress": 0, "secrets": 0,   "start_time": None, "eta": 0, "input_count": 0},
     "Katana":    {"status": "idle", "progress": 0, "crawled": 0,   "start_time": None, "eta": 0, "input_count": 0},
+    "JS Hunter": {"status": "idle", "progress": 0, "secrets": 0,   "start_time": None, "eta": 0, "input_count": 0},
     "Nuclei":    {"status": "idle", "progress": 0, "vulns": 0,     "start_time": None, "eta": 0, "input_count": 0,
                   "requests_done": 0, "requests_total": 0, "rps": 0, "matched": 0},
 }
@@ -237,14 +237,14 @@ _live_view_meta = {"target": "", "current": 0, "total": 0}
 _live_view_lock = threading.RLock()  # Re-entrant lock prevents deadlocks from nested acquire calls
 _stdout_lock = threading.Lock()      # Serializes all stdout writes to prevent cursor corruption
 
-# Tool name → count key mapping
+# Tool name → count key mapping (ordered to match pipeline execution)
 _TOOL_COUNT_KEYS = {
     "Subfinder": "subs",
     "DNSX": "live",
     "Uncover": "takeovers",
     "HTTPX": "endpoints",
-    "JS Hunter": "secrets",
     "Katana": "crawled",
+    "JS Hunter": "secrets",
     "Nuclei": "vulns",
 }
 
@@ -440,6 +440,8 @@ def _render_live_view():
                 color = "\033[90m"       # dim grey
             elif status == "running":
                 color = "\033[33m"       # yellow
+            elif status == "cached":
+                color = "\033[36m"       # cyan
             elif status == "finished":
                 color = "\033[32m" if count > 0 else "\033[34m"  # green / blue
             elif status == "error":
@@ -462,7 +464,7 @@ def _render_live_view():
                     ratio = min(1.0, (now - start_t) / eta)
                 else:
                     ratio = 0.0
-            elif status in ("finished", "error"):
+            elif status in ("finished", "cached", "error"):
                 ratio = 1.0
             else:
                 ratio = 0.0
