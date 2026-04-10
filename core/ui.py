@@ -94,6 +94,7 @@ _live_thread: Optional[threading.Thread] = None
 _log_lines = []
 _log_lines_lock = threading.Lock()
 _MAX_LOG_LINES = 20
+_WATCHDOG_MODE = False  # Flag to prevent banner clearing in watchdog mode
 
 # Live view metadata
 _live_view_meta = {"target": "", "current": 0, "total": 0}
@@ -163,6 +164,11 @@ def ui_clear_and_banner():
     ui_clear()
     ui_banner()
 
+def ui_enable_watchdog_mode():
+    """Enable watchdog mode (prevents clearing banner for each target)"""
+    global _WATCHDOG_MODE
+    _WATCHDOG_MODE = True
+
 def ui_snapshot(label: str = "manual", context: str = ""):
     """Snapshot terminal state to log (for debugging)"""
     with _log_lines_lock:
@@ -173,7 +179,9 @@ def ui_mission_header(handle: str, score: int = 0):
     global _MISSION_START_TIME
     _MISSION_START_TIME = datetime.now()
     
-    ui_clear_and_banner()
+    # In watchdog mode, don't clear banner (it's already displayed once at startup)
+    if not _WATCHDOG_MODE:
+        ui_clear_and_banner()
     
     clean_handle = handle.replace('_', '.').replace('*', '').upper()
     score_color = "green" if score >= 70 else "yellow" if score >= 40 else "dim"

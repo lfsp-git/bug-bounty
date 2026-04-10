@@ -24,7 +24,7 @@ os.environ["PATH"] += os.pathsep + os.path.join(home, "go", "bin") + os.pathsep 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Importe apenas o necessário
-from core.ui import ui_log, Colors, ui_clear_and_banner, ui_set_mission_meta
+from core.ui import ui_log, Colors, ui_clear_and_banner, ui_set_mission_meta, ui_enable_watchdog_mode
 from core.config import TOOL_TIMEOUTS  # Centralized timeouts
 from core.bounty_scorer import BountyScorer  # Bounty program prioritization
 
@@ -296,6 +296,7 @@ def _scan_target_parallel_wrapper(args):
 
 
 def run_watchdog():
+    ui_enable_watchdog_mode()  # Enable watchdog mode to prevent banner clearing
     ui_clear_and_banner()  # Only clear and show banner once at startup
     ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo.", Colors.SUCCESS)
     while True:
