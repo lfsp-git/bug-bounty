@@ -96,8 +96,8 @@ class FalsePositiveKiller:
         if cls.NULL_VAL.search(extracted_str):
             return "NULL_VAL"
         
-        # Filter 7: Micro findings (too short to be real)
-        if len(extracted_str.strip()) < 6:
+        # Filter 7: Micro findings (too short to be real, e.g., single char)
+        if len(extracted_str.strip()) < 3:
             return "Micro"
         
         return ""  # Passed all filters
