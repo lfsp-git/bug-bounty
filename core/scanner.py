@@ -79,13 +79,18 @@ def _run_with_progress(label, fn, live_tail_pipe=None):
         elapsed_total = time.time() - start_time
         _record_tool_time(label, elapsed_total)
         ui_log(label, f"Done in {int(elapsed_total)}s", Colors.DIM)
+    except KeyboardInterrupt:
+        stop_event.set()
+        t.join(timeout=0.5)
+        raise  # propagate cleanly so watchdog/scanner can handle it
     except Exception as e:
-        # Graceful degradation: log error but don't crash scan
         elapsed_total = time.time() - start_time
         logging.warning(f"{label} failed after {int(elapsed_total)}s: {str(e)[:60]}")
         ui_log(label, f"Error (continuing): {str(e)[:40]}", Colors.WARNING)
     finally:
-        stop_event.set(); t.join()
+        stop_event.set()
+        if t.is_alive():
+            t.join(timeout=0.5)
 
 def _count_lines(filepath):
     try:

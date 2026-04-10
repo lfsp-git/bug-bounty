@@ -95,6 +95,41 @@ ICONS = {
 
 _MISSION_START_TIME = None
 
+# ---------------------------------------------------------------------------
+# Terminal Snapshot — rolling buffer + error capture
+# ---------------------------------------------------------------------------
+_SNAPSHOT_BUFFER: list = []          # rolling log of (timestamp, module, message)
+_SNAPSHOT_MAX = 200                  # keep last N lines in memory
+_SNAPSHOT_DIR = "logs/snapshots"
+
+def _buffer_append(module: str, message: str):
+    ts = datetime.now().strftime('%H:%M:%S')
+    _SNAPSHOT_BUFFER.append(f"[{ts}] {module}: {sanitize_input(message)}")
+    if len(_SNAPSHOT_BUFFER) > _SNAPSHOT_MAX:
+        del _SNAPSHOT_BUFFER[0]
+
+def ui_snapshot(label: str = "manual", context: str = ""):
+    """Dump current terminal buffer to logs/snapshots/<ts>_<label>.log.
+    Called automatically on errors; call manually at any time for a checkpoint.
+    """
+    try:
+        os.makedirs(_SNAPSHOT_DIR, exist_ok=True)
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        path = os.path.join(_SNAPSHOT_DIR, f"{ts}_{label}.log")
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(f"# Hunt3r Terminal Snapshot\n")
+            f.write(f"# Label   : {label}\n")
+            f.write(f"# Time    : {datetime.now().isoformat()}\n")
+            if context:
+                f.write(f"# Context : {context}\n")
+            f.write(f"# Lines   : {len(_SNAPSHOT_BUFFER)}\n")
+            f.write("# " + "─"*60 + "\n\n")
+            f.write('\n'.join(_SNAPSHOT_BUFFER))
+            f.write('\n')
+    except OSError:
+        pass  # Never block on snapshot failure
+    return path if 'path' in dir() else ""
+
 def ui_log(module: str, message: str, color=Colors.RESET):
     timestamp = datetime.now().strftime('%H:%M:%S')
     icon = ICONS.get(module.upper(), ">>")
@@ -102,8 +137,13 @@ def ui_log(module: str, message: str, color=Colors.RESET):
     # \r\033[K limpa a linha atual, resolvendo o problema de colisão do spinner
     print(f"\r\033[K[{timestamp}] {icon} {color}{module}: {message}{Colors.RESET}")
     
-    # Grava no ficheiro de log sem os caracteres ANSI e sem os ícones
+    # Buffer for snapshots + file log (ANSI-stripped)
+    _buffer_append(module, message)
     logging.info(f"{module}: {sanitize_input(message)}")
+    
+    # Auto-snapshot on errors
+    if module.upper() in ("ERR", "ENGINE_ERR", "ENGINE_WARN") or color == Colors.ERROR:
+        ui_snapshot(label=f"error_{module.lower().replace(' ','_')}", context=message)
 
 def ui_update_status(step: str, detail: str, color=Colors.PRIMARY):
     icon = ICONS.get(step.upper(), "[*]")
@@ -126,7 +166,7 @@ def ui_banner():
         " MMM    YMM \"YmmMMMM\"\"  MMM     YM     MMM      YMMP\"  MMMM   \"W\" \n"
     )
     print(f"{Colors.PRIMARY}{b_art}{Colors.RESET}")
-    print(f"    {Colors.DIM}v2.5 - PREDATOR TACTICAL VIEW{Colors.RESET}\n")
+    print(f"    {Colors.DIM}v1.0 - EXCALIBUR{Colors.RESET}\n")
 
 def ui_clear_and_banner():
     """Stop any active live view, clear screen, and show banner (used by mission header)."""
@@ -216,8 +256,8 @@ def _stop_live_view():
 atexit.register(_terminal_cleanup)
 
 def _sigint_handler(signum, frame):
+    ui_snapshot(label="sigint", context="CTRL+C received")
     _terminal_cleanup()
-    # Re-raise as KeyboardInterrupt so callers can catch it normally
     raise KeyboardInterrupt
 
 signal.signal(signal.SIGINT, _sigint_handler)

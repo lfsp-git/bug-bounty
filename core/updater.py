@@ -29,7 +29,7 @@ class ToolUpdater:
             'https://gitlab.com/',
             'https://bitbucket.org/',
         )
-        return any(url.startswith(p) for p in allowed_prefixes) and '.git' in url or url.endswith('/')
+        return any(url.startswith(p) for p in allowed_prefixes)
 
     def _should_upd(self, name):
         if not os.path.exists(self.cache): return True

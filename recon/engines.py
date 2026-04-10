@@ -1,7 +1,7 @@
 import os, subprocess, shlex, re, io, shutil, sys
 import logging
-from core.ui_manager import ui_log, Colors
-from core.timeouts import get_tool_timeout  # Centralized timeouts
+from core.ui import ui_log, Colors
+from core.config import get_tool_timeout  # Centralized timeouts
 from recon.tool_discovery import find_tool
 
 PDTM = os.environ.get("HUNT3R_PDTM_PATH", os.path.expanduser("~/.pdtm/go/bin/"))
@@ -59,7 +59,8 @@ def run_subfinder(input_file, output_file, rate_limit=100):
     run_cmd([find_tool("subfinder"), "-dL", input_file, "-o", output_file, "-silent", f"-rate-limit={rate_limit}"], "Subfinder", output_file)
 
 def run_dnsx(input_file, output_file, rate_limit=100):
-    run_cmd([find_tool("dnsx"), "-l", input_file, "-o", output_file, "-wd", "-silent", "-a", "-resp", f"-rate-limit={rate_limit}"], "DNSX", output_file)
+    # Note: no -resp flag — keeps output as plain hostnames so HTTPX can consume it directly
+    run_cmd([find_tool("dnsx"), "-l", input_file, "-o", output_file, "-wd", "-silent", "-a", f"-rate-limit={rate_limit}"], "DNSX", output_file)
 
 def run_uncover(domains, output_file):
     if not domains: return
