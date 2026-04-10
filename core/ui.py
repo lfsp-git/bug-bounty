@@ -196,8 +196,10 @@ def ui_mission_header(handle: str, score: int = 0):
     # Start live view rendering
     _start_live_view()
 
-def ui_mission_footer(stats: Dict[str, Any]):
+def ui_mission_footer(stats: Dict[str, Any] = None):
     """Display mission footer with summary stats"""
+    if stats is None:
+        stats = {}
     if _MISSION_START_TIME:
         elapsed = datetime.now() - _MISSION_START_TIME
         mins, secs = divmod(int(elapsed.total_seconds()), 60)

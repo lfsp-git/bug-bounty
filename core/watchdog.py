@@ -307,6 +307,10 @@ def _scan_target_parallel_wrapper(args):
 
 
 def run_watchdog():
+    # Disable tool time recording to prevent cache modification on every run
+    import core.scanner as scanner_module
+    scanner_module._RECORD_TOOL_TIMES = False
+    
     ui_enable_watchdog_mode()  # Enable watchdog mode to prevent banner clearing
     ui_clear_and_banner()  # Only clear and show banner once at startup
     ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo.", Colors.SUCCESS)

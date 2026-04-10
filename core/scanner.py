@@ -38,6 +38,7 @@ from core.notifier import NotificationDispatcher
 from core.reporter import BugBountyReporter
 
 _CACHE_TIMES = "recon/tool_times.json"
+_RECORD_TOOL_TIMES = True  # Can be disabled in watchdog mode to prevent cache modification
 
 def count_lines(filepath: str) -> int:
     """Count lines safely with context manager to prevent file descriptor leaks"""
@@ -56,6 +57,8 @@ def _load_tool_times() -> Dict[str, Any]:
     return {}
 
 def _record_tool_time(label: str, elapsed: float):
+    if not _RECORD_TOOL_TIMES:
+        return  # Skip recording in watchdog mode
     data = _load_tool_times()
     key = label.split(' [')[0]
     history = data.get(key, [])
