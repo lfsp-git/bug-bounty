@@ -90,7 +90,7 @@ def _run_with_progress(label, fn, live_tail_pipe=None):
     finally:
         stop_event.set()
         if t.is_alive():
-            t.join(timeout=0.5)
+            t.join(timeout=2.0)  # give spinner up to 2s to exit cleanly (was 0.5)
 
 def _count_lines(filepath):
     try:

@@ -447,24 +447,26 @@ def ui_scan_summary(results: dict):
     # Limpeza do nome novamente para o sumário
     clean_handle = results.get('target', 'UNKNOWN').replace('_', '.').replace('*', '').upper()
 
-    print(f"\n\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}")
-    print(f"\r\033[K{Colors.BOLD}                     RESUMO DA CAÇADA{duration_str}{Colors.RESET}")
-    print(f"\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}")
-    
-    print(f"\r\033[K  🎯 Alvo: {clean_handle}")
-    print(f"\r\033[K  📊 Score: {results.get('score', 0)}%")
-    print(f"\r\033[K  🌐 Subs Vivos: {results.get('alive', 0)} / {results.get('subdomains', 0)}")
-    print(f"\r\033[K  🕷️ Endpoints: {results.get('endpoints', 0)}")
-    
-    if 'js_secret_lines' in results:
-        print(f"\r\033[K  🔑 JS Secrets: {results['js_secret_lines']}")
+    # Hold stdout lock so no spinner thread can corrupt our output
+    with _stdout_lock:
+        print(f"\n\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}")
+        print(f"\r\033[K{Colors.BOLD}                     RESUMO DA CAÇADA{duration_str}{Colors.RESET}")
+        print(f"\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}")
         
-    vulns = results.get('vulns', 0)
-    v_color = Colors.ERROR if vulns > 0 else Colors.SUCCESS
-    v_text = f"{vulns}" if vulns > 0 else "0 (Silêncio no rádio)"
-    print(f"\r\033[K  ☢️ Vulns: {v_color}{v_text}{Colors.RESET}")
-    
-    print(f"\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}\n")
+        print(f"\r\033[K  🎯 Alvo: {clean_handle}")
+        print(f"\r\033[K  📊 Score: {results.get('score', 0)}%")
+        print(f"\r\033[K  🌐 Subs Vivos: {results.get('alive', 0)} / {results.get('subdomains', 0)}")
+        print(f"\r\033[K  🕷️ Endpoints: {results.get('endpoints', 0)}")
+        
+        if 'js_secret_lines' in results:
+            print(f"\r\033[K  🔑 JS Secrets: {results['js_secret_lines']}")
+            
+        vulns = results.get('vulns', 0)
+        v_color = Colors.ERROR if vulns > 0 else Colors.SUCCESS
+        v_text = f"{vulns}" if vulns > 0 else "0 (Silêncio no rádio)"
+        print(f"\r\033[K  ☢️ Vulns: {v_color}{v_text}{Colors.RESET}")
+        
+        print(f"\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}\n")
 
 def ui_mission_footer():
     """Finaliza a missão, parando o live view e restaurando o terminal."""

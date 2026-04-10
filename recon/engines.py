@@ -44,6 +44,13 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
         if isinstance(stderr_dest, io.IOBase):
             stderr_dest.close()
         return
+    # If no explicit stats pipe, capture stderr to a temp file so errors are visible
+    tmp_stderr = None
+    if stderr_dest is subprocess.DEVNULL:
+        import tempfile
+        tmp_stderr = tempfile.NamedTemporaryFile(mode='w', suffix=f'_{label.lower()}_stderr.log',
+                                                  delete=False, encoding='utf-8')
+        stderr_dest = tmp_stderr
     try:
         # Use timeout from centralized config
         subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False, timeout=get_tool_timeout(label))
@@ -54,6 +61,16 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
     finally:
         if isinstance(stderr_dest, io.IOBase):
             stderr_dest.close()
+        # Log any stderr output from the tool (helps diagnose silent failures)
+        if tmp_stderr:
+            try:
+                with open(tmp_stderr.name, 'r', encoding='utf-8', errors='ignore') as ef:
+                    err_txt = ef.read(500).strip()
+                if err_txt:
+                    ui_log("ENGINE_WARN", f"{label} stderr: {err_txt[:120]}", Colors.WARNING)
+                os.unlink(tmp_stderr.name)
+            except OSError:
+                pass
 
 def run_subfinder(input_file, output_file, rate_limit=100):
     run_cmd([find_tool("subfinder"), "-dL", input_file, "-o", output_file, "-silent", f"-rate-limit={rate_limit}"], "Subfinder", output_file)
@@ -76,10 +93,14 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
            f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2"]
     run_cmd(cmd, "Katana", output_file)
 
-def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=100):
-    # -duc: skip update check (saves ~5s startup). -timeout 5: per-template cap to avoid hangs.
+def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50):
+    # -duc: skip update check. -timeout 5: per-request HTTP cap.
+    # -c 25: limit concurrency to prevent hangs on slow targets.
+    # -severity: limit to critical/high/medium only (avoids thousands of info/low templates).
+    # No -stats/-sj: those conflict with -silent and output is discarded anyway.
     cmd = [find_tool("nuclei"), "-l", input_file, "-o", output_file,
-           "-duc", "-silent", "-stats", "-sj", "-rl", str(rate_limit), "-timeout", "5"]
+           "-duc", "-silent", "-rl", str(rate_limit), "-c", "25",
+           "-timeout", "5", "-severity", "critical,high,medium"]
     if tags:
         cmd.extend(["-tags", tags])
     run_cmd(cmd, "Nuclei", output_file, stats_pipe=stats_pipe)
