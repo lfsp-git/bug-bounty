@@ -18,6 +18,9 @@ from recon.engines import (
     apply_sniper_filter
 )
 
+# Tech Detection
+from recon.tech_detector import TechDetector
+
 # AI Imports
 from core.ai import AIClient
 
@@ -306,12 +309,15 @@ class MissionRunner:
         ok = _run_with_progress("JS Hunter", lambda: run_js_hunter(katana_file, js_secrets_file))
         _tool_done("JS Hunter", "secrets", js_secrets_file) if ok else _tool_error("JS Hunter")
         
+        # Smart Nuclei Tag Detection: Extract tech from Katana/HTTPX and select appropriate tags
+        nuclei_tags = self._get_smart_nuclei_tags(recon_input, katana_file)
+        
         # Nuclei: scanning de vulnerabilidades com URLs do HTTPX
         findings_file = paths["fin"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
         _tool_start("Nuclei", input_count=count_lines(recon_input))
         ok = _run_with_progress("Nuclei", lambda: run_nuclei(
-            recon_input, findings_file, tags="cve,misconfig,takeover",
+            recon_input, findings_file, tags=nuclei_tags,
             rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback),
             extra_stats_fn=_nuclei_extra_stats)
         _tool_done("Nuclei", "vulns", findings_file) if ok else _tool_error("Nuclei")
@@ -415,6 +421,56 @@ Respond only: VALID or INVALID"""
             ui_log("AI VALIDATION", "Validation complete.", Colors.SUCCESS)
         except Exception as e:
             ui_log("AI VALIDATION", f"Validation failed: {str(e)[:50]}", Colors.ERROR)
+
+    def _get_smart_nuclei_tags(self, httpx_file: str, katana_file: str) -> str:
+        """
+        Detect web technologies from URLs and select optimal Nuclei tags.
+        
+        Reads URLs from HTTPX and Katana outputs, extracts tech stack,
+        and returns prioritized Nuclei tag string for vulnerability scanning.
+        """
+        try:
+            tech_stack = set()
+            urls = []
+            
+            # Extract URLs from HTTPX
+            if os.path.exists(httpx_file) and os.path.getsize(httpx_file) > 0:
+                try:
+                    with open(httpx_file, 'r') as f:
+                        for line in f:
+                            if line.strip():
+                                urls.append(line.strip())
+                except (IOError, OSError):
+                    pass
+            
+            # Extract URLs from Katana output
+            if os.path.exists(katana_file) and os.path.getsize(katana_file) > 0:
+                try:
+                    with open(katana_file, 'r') as f:
+                        for line in f:
+                            if line.strip():
+                                urls.append(line.strip())
+                except (IOError, OSError):
+                    pass
+            
+            # Detect technology stack from URLs
+            if urls:
+                detected_tech = TechDetector.detect_from_urls(urls)
+                tech_stack.update(detected_tech)
+            
+            # Generate optimized Nuclei tags
+            if tech_stack:
+                tag_string, tag_list = TechDetector.get_nuclei_tags(tech_stack)
+                tech_summary = TechDetector.get_tech_summary(tech_stack)
+                ui_log("TECH", f"Detected: {tech_summary}", Colors.INFO)
+                ui_log("TAGS", f"Using tags: {tag_string[:60]}...", Colors.DIM)
+                return tag_string
+            
+        except Exception as e:
+            logging.warning(f"Tech detection failed: {e}")
+        
+        # Fallback to default tags if detection fails
+        return "cve,misconfig,takeover"
 
     def _notify_and_report(self, paths: dict, results: dict):
         """Send notifications and generate bug bounty report after scan."""
