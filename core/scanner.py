@@ -124,6 +124,7 @@ def _count_findings(filepath):
         return 0
 
 
+class MissionRunner:
     """Handles a single mission lifecycle: prepare, run vulnerability phase, and finalize."""
     def __init__(self, target_data, stats_pipe=None, config=None):
         self.target = target_data
