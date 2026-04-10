@@ -15,7 +15,7 @@ from core.ui import (
 )
 
 # Engine Imports
-from recon.engines import (
+from recon.tools import (
     run_subfinder, run_dnsx, run_uncover, run_nuclei, 
     run_httpx, run_katana_surgical, run_js_hunter, 
     apply_sniper_filter
@@ -31,14 +31,13 @@ from recon.custom_templates import load_custom_templates, get_custom_template_ta
 from core.ai import AIClient
 
 # Diff Engine
-from core.storage import ReconDiff
+from core.state import ReconDiff
 
 # Rate limiting
 from core.config import get_rate_limiter, RATE_LIMIT, REQUESTS_PER_SECOND, MAX_SUBS_PER_TARGET, NUCLEI_RATE_LIMIT
 
 # Notification & Reporting
-from core.notifier import NotificationDispatcher
-from core.reporter import BugBountyReporter
+from core.output import NotificationDispatcher, BugBountyReporter
 
 _CACHE_TIMES = "recon/tool_times.json"
 _RECORD_TOOL_TIMES = True  # Can be disabled in watchdog mode to prevent cache modification

@@ -113,7 +113,7 @@ def _fetch_global_wildcards():
         except subprocess.TimeoutExpired:
             ui_log("WATCHDOG", f"PULADO: {name.upper()} (Timeout excedido).", Colors.WARNING)
 
-    from recon.tool_discovery import find_tool
+    from recon.tools import find_tool
     bbscope_path = find_tool("bbscope")
     if bbscope_path == "bbscope" and not shutil.which("bbscope"):
         ui_log("WATCHDOG", "bbscope nao encontrado. Pulando coleta de wildcards via API.", Colors.WARNING)
@@ -267,8 +267,8 @@ def _scan_target_parallel_wrapper(args):
         _worker_slot_queue.put(worker_id)
 
 def run_watchdog():
-    import core.scanner as scanner_module
-    scanner_module._RECORD_TOOL_TIMES = False
+    from core.runner import set_record_tool_times
+    set_record_tool_times(False)
 
     ui_enable_watchdog_mode()
     ui_log("WATCHDOG", f"Modo WATCHDOG PREDADOR ativo. {MAX_PARALLEL_WORKERS} workers paralelos.", Colors.SUCCESS)
@@ -283,7 +283,7 @@ def run_watchdog():
             wildcards = _prioritize_targets_by_bounty_potential(wildcards)
             ui_log("WATCHDOG", f"{len(wildcards)} alvos | {MAX_PARALLEL_WORKERS} workers paralelos", Colors.DIM)
 
-            from core.scanner import ProOrchestrator
+            from core.runner import ProOrchestrator
             from core.ai import IntelMiner, AIClient
 
             total = len(wildcards)

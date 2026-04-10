@@ -13,7 +13,7 @@ from core.ui import ui_banner, ui_clear, ui_main_menu, ui_log, Colors
 from core.ui import ui_platform_selection_menu, ui_target_selection_list
 from core.ui import ui_manual_target_input, ui_custom_targets_list
 from core.ai import AIClient, IntelMiner, select_model_interactive
-from core.scanner import ProOrchestrator
+from core.runner import ProOrchestrator
 from core.updater import ToolUpdater
 from core.config import AUTO_UPDATE_ON_START
 from recon.platforms import PlatformManager, load_custom_targets
@@ -220,7 +220,7 @@ def main() -> None:
         ui_clear()
         ui_banner()
         ui_log("DRY-RUN", "Preview mode — no tools will execute", Colors.WARNING)
-        from core.export import run_dry_run
+        from core.output import run_dry_run
         run_dry_run()
         return
 
@@ -228,7 +228,7 @@ def main() -> None:
         ui_clear()
         ui_banner()
         ui_log("RESUME", f"Resuming: {args.resume}", Colors.WARNING)
-        from core.storage import resume_mission
+        from core.state import resume_mission
         resume_mission(args.resume)
         return
 
@@ -236,7 +236,7 @@ def main() -> None:
         ui_clear()
         ui_banner()
         ui_log("EXPORT", f"Exporting as {args.export.upper()}...", Colors.WARNING)
-        from core.export import ExportFormatter
+        from core.output import ExportFormatter
         findings = _load_all_findings()
         if not findings:
             ui_log("EXPORT", "No findings in recon/baselines/. Run a scan first.", Colors.WARNING)
@@ -291,4 +291,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

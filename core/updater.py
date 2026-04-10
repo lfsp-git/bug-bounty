@@ -2,7 +2,7 @@ import os, sys, subprocess, time, yaml, shlex, shutil, logging
 from datetime import datetime
 from typing import Dict
 from core.ui import ui_log, Colors, _buffer_append
-from recon.tool_discovery import find_tool
+from recon.tools import find_tool
 
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
