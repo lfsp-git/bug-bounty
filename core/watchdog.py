@@ -34,7 +34,7 @@ from core.ui import (
     ui_worker_register, ui_worker_done, ui_snapshot, ui_cycle_started,
     set_worker_context, _WORKER_SLOTS,
 )
-from core.bounty_scorer import BountyScorer
+from core.intel import AIClient, IntelMiner, score_watchdog_target
 
 GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
 SCAN_HISTORY_FILE = "recon/baselines/target_scan_history.txt"
@@ -175,16 +175,8 @@ def _process_raw_to_targets(raw_list):
 
 def _prioritize_targets_by_bounty_potential(targets):
     scored_targets = []
-    now = time.time()
     for target in targets:
-        program_data = {
-            'handle': target.get('original_handle', target.get('handle', 'unknown')),
-            'platform': 'unknown',
-            'created_at': now,
-            'bounty_range': (100, 1000),
-            'scope_size': 100,
-        }
-        score, breakdown = BountyScorer.score_program(program_data)
+        score, breakdown = score_watchdog_target(target)
         scored_targets.append((target, score, breakdown))
 
     scored_targets.sort(key=lambda x: x[1], reverse=True)
@@ -284,7 +276,6 @@ def run_watchdog():
             ui_log("WATCHDOG", f"{len(wildcards)} alvos | {MAX_PARALLEL_WORKERS} workers paralelos", Colors.DIM)
 
             from core.runner import ProOrchestrator
-            from core.ai import IntelMiner, AIClient
 
             total = len(wildcards)
             tasks = []

@@ -218,6 +218,16 @@ class TestFilter(unittest.TestCase):
         reason = FalsePositiveKiller._check_filters(finding)
         self.assertIsInstance(reason, str)
 
+    def test_micro_filter_does_not_drop_without_extracted_results(self):
+        from core.filter import FalsePositiveKiller
+
+        finding = {
+            "template-id": "sqli-test",
+            "host": "https://example.com",
+        }
+        reason = FalsePositiveKiller._check_filters(finding)
+        self.assertNotEqual(reason, "Micro")
+
 
 # ---------------------------------------------------------------------------
 # core/export.py

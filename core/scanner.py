@@ -3,7 +3,7 @@ import os, sys, time, threading, math, json, logging
 from typing import Dict, List, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.ai import IntelMiner
+    from core.intel import IntelMiner
 
 # UI Imports
 from core.ui import (
@@ -28,7 +28,7 @@ from recon.tech_detector import TechDetector
 from recon.custom_templates import load_custom_templates, get_custom_template_tags
 
 # AI Imports
-from core.ai import AIClient
+from core.intel import AIClient
 
 # Diff Engine
 from core.state import ReconDiff
@@ -693,7 +693,7 @@ class ProOrchestrator:
     def _ensure_intel(self):
         """Lazily initialize IntelMiner (requires AIClient)."""
         if self.intel is None:
-            from core.ai import AIClient, IntelMiner
+            from core.intel import AIClient, IntelMiner
             self.intel = IntelMiner(AIClient())
 
     def start_mission(self, *args, stats_pipe=None):

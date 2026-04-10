@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core.ui import ui_banner, ui_clear, ui_main_menu, ui_log, Colors
 from core.ui import ui_platform_selection_menu, ui_target_selection_list
 from core.ui import ui_manual_target_input, ui_custom_targets_list
-from core.ai import AIClient, IntelMiner, select_model_interactive
+from core.intel import AIClient, IntelMiner, select_model_interactive
 from core.runner import ProOrchestrator
 from core.updater import ToolUpdater
 from core.config import AUTO_UPDATE_ON_START
