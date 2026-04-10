@@ -1,7 +1,7 @@
 import os, sys, subprocess, time, yaml, shlex, logging
 from datetime import datetime
 from typing import Dict
-from core.ui_manager import ui_log, Colors
+from core.ui import ui_log, Colors
 
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -16,7 +16,8 @@ class ToolUpdater:
     def _load_cfg(self):
         try:
             with open(self.cfg_path) as f: return yaml.safe_load(f)
-        except Exception: return {'tools':{},'custom_templates':{},'settings':{'auto_update_on_start':True}}
+        except (OSError, ValueError, yaml.YAMLError):
+            return {'tools':{},'custom_templates':{},'settings':{'auto_update_on_start':True}}
 
     def _validate_git_url(self, url: str) -> bool:
         """Validate git URL to prevent injection attacks. Only allow HTTPS github URLs."""
