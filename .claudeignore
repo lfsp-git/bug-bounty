@@ -1,6 +1,5 @@
-recon/db/
 *.txt
 *.json
 *.sqlite
-logs/
 .env
+__pycache__
