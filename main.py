@@ -59,6 +59,8 @@ def init_seq() -> None:
     try:
         ToolUpdater().update_all()
         ui_log("SYSTEM", "Pronto.", Colors.SUCCESS)
+    except KeyboardInterrupt:
+        ui_log("SYSTEM", "Verificacao interrompida. Continuando...", Colors.WARNING)
     except Exception as e:
         logger.error(f"Tool update failed: {e}")
         ui_log("UPDATER ERR", str(e), Colors.ERROR)

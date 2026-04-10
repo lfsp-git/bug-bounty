@@ -109,26 +109,58 @@ def _buffer_append(module: str, message: str):
         del _SNAPSHOT_BUFFER[0]
 
 def ui_snapshot(label: str = "manual", context: str = ""):
-    """Dump current terminal buffer to logs/snapshots/<ts>_<label>.log.
-    Called automatically on errors; call manually at any time for a checkpoint.
-    """
+    """Dump current terminal buffer to logs/snapshots/<ts>_<label>.log."""
     try:
+        import platform
         os.makedirs(_SNAPSHOT_DIR, exist_ok=True)
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         path = os.path.join(_SNAPSHOT_DIR, f"{ts}_{label}.log")
         with open(path, 'w', encoding='utf-8') as f:
-            f.write(f"# Hunt3r Terminal Snapshot\n")
-            f.write(f"# Label   : {label}\n")
-            f.write(f"# Time    : {datetime.now().isoformat()}\n")
+            # Header
+            f.write("# ═══════════════════════════════════════════════════\n")
+            f.write("# Hunt3r Terminal Snapshot\n")
+            f.write("# ═══════════════════════════════════════════════════\n")
+            f.write(f"# Label    : {label}\n")
+            f.write(f"# Time     : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             if context:
-                f.write(f"# Context : {context}\n")
-            f.write(f"# Lines   : {len(_SNAPSHOT_BUFFER)}\n")
-            f.write("# " + "─"*60 + "\n\n")
+                f.write(f"# Context  : {context}\n")
+            
+            # Mission state
+            meta = _live_view_meta
+            if meta.get("target"):
+                f.write(f"# Target   : {meta['target']}\n")
+            if meta.get("total"):
+                f.write(f"# Progress : {meta.get('current',0)}/{meta['total']}\n")
+            if _MISSION_START_TIME:
+                elapsed = int((datetime.now() - _MISSION_START_TIME).total_seconds())
+                f.write(f"# Elapsed  : {elapsed//60:02d}m{elapsed%60:02d}s\n")
+            
+            # Tool status
+            f.write("# ─── Tool Status ──────────────────────────────────\n")
+            for tool, data in _live_view_data.items():
+                status = data.get("status", "?")
+                count = data.get('subs', data.get('live', data.get('endpoints',
+                        data.get('crawled', data.get('secrets', data.get('vulns', 0))))))
+                f.write(f"#   {tool:<12} {status:<10} count={count}\n")
+            
+            # Environment (masked keys)
+            f.write("# ─── Environment ──────────────────────────────────\n")
+            keys_to_check = ["TERM", "H1_USER", "H1_TOKEN", "BC_TOKEN", "IT_TOKEN",
+                             "TELEGRAM_BOT_TOKEN", "OPENROUTER_API_KEY", "SHODAN_API_KEY"]
+            for k in keys_to_check:
+                v = os.environ.get(k, "")
+                if v:
+                    masked = v[:4] + "****" if len(v) > 4 else "****"
+                    f.write(f"#   {k}={masked}\n")
+                else:
+                    f.write(f"#   {k}=(not set)\n")
+            
+            f.write(f"# ─── Log Buffer ({len(_SNAPSHOT_BUFFER)} lines) ─────────────────────\n\n")
             f.write('\n'.join(_SNAPSHOT_BUFFER))
             f.write('\n')
+        return path
     except OSError:
-        pass  # Never block on snapshot failure
-    return path if 'path' in dir() else ""
+        return ""
 
 def ui_log(module: str, message: str, color=Colors.RESET):
     timestamp = datetime.now().strftime('%H:%M:%S')
