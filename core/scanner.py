@@ -8,7 +8,9 @@ if TYPE_CHECKING:
 # UI Imports
 from core.ui import (
     ui_mission_header, ui_log, ui_update_status, ui_scan_summary,
-    ui_mission_footer, Colors, _live_view_data, _live_view_lock, ui_set_mission_meta
+    ui_mission_footer, Colors, _live_view_data, _live_view_lock, ui_set_mission_meta,
+    _get_current_worker, ui_worker_tool_started, ui_worker_tool_finished,
+    ui_worker_tool_cached, ui_worker_tool_error, ui_worker_nuclei_update,
 )
 
 # Engine Imports
@@ -39,6 +41,11 @@ from core.reporter import BugBountyReporter
 
 _CACHE_TIMES = "recon/tool_times.json"
 _RECORD_TOOL_TIMES = True  # Can be disabled in watchdog mode to prevent cache modification
+
+def _get_worker_id() -> str:
+    """Get current worker ID from thread-local (set by watchdog.py)."""
+    from core.ui import _get_current_worker
+    return _get_current_worker()
 
 def count_lines(filepath: str) -> int:
     """Count lines safely with context manager to prevent file descriptor leaks"""
@@ -120,20 +127,26 @@ def _count_lines(filepath):
 def _tool_start(name: str, input_count: int = 0):
     """Mark tool as running in live view with start_time, historical ETA, and input count."""
     history = _load_tool_times().get(name, [])
-    avg = sum(history) / len(history) if history else 0.0  # 0 = no history, no ETA shown
+    avg = sum(history) / len(history) if history else 0.0
     with _live_view_lock:
         _live_view_data[name]["status"] = "running"
         _live_view_data[name]["start_time"] = time.time()
         _live_view_data[name]["eta"] = avg
         _live_view_data[name]["input_count"] = input_count
+    # Route to per-worker UI
+    ui_worker_tool_started(_get_current_worker(), name, input_count, avg)
 
 def _tool_done(name: str, count_key: str, count_file: str = ""):
     """Mark tool as finished in live view and update count from file."""
     count = _count_lines(count_file) if count_file and os.path.exists(count_file) else 0
     with _live_view_lock:
+        start_t = _live_view_data[name].get("start_time")
+        elapsed = time.time() - start_t if start_t else 0.0
         _live_view_data[name]["status"] = "finished"
         _live_view_data[name]["start_time"] = None
         _live_view_data[name][count_key] = count
+    # Route to per-worker UI
+    ui_worker_tool_finished(_get_current_worker(), name, count, elapsed)
 
 def _tool_cached(name: str, count_key: str, count_file: str = ""):
     """Mark tool as served from cache in live view."""
@@ -142,12 +155,16 @@ def _tool_cached(name: str, count_key: str, count_file: str = ""):
         _live_view_data[name]["status"] = "cached"
         _live_view_data[name]["start_time"] = None
         _live_view_data[name][count_key] = count
+    # Route to per-worker UI
+    ui_worker_tool_cached(_get_current_worker(), name, count)
 
 def _tool_error(name: str):
     """Mark tool as error in live view."""
     with _live_view_lock:
         _live_view_data[name]["status"] = "error"
         _live_view_data[name]["start_time"] = None
+    # Route to per-worker UI
+    ui_worker_tool_error(_get_current_worker(), name)
 
 def _nuclei_progress_callback(stats):
     """Update live view with Nuclei stats from -sj JSON output."""
@@ -157,12 +174,18 @@ def _nuclei_progress_callback(stats):
     def _to_float(val):
         try: return float(val or 0)
         except (TypeError, ValueError): return 0.0
+    done  = _to_int(stats.get("requests", stats.get("sent", 0)))
+    total = _to_int(stats.get("total", 0))
+    rps   = _to_float(stats.get("rps", 0))
+    matched = _to_int(stats.get("matched", 0))
     with _live_view_lock:
         d = _live_view_data["Nuclei"]
-        d["requests_done"] = _to_int(stats.get("requests", stats.get("sent", 0)))
-        d["requests_total"] = _to_int(stats.get("total", 0))
-        d["rps"] = _to_float(stats.get("rps", 0))
-        d["matched"] = _to_int(stats.get("matched", 0))
+        d["requests_done"]  = done
+        d["requests_total"] = total
+        d["rps"]     = rps
+        d["matched"] = matched
+    # Route to per-worker UI
+    ui_worker_nuclei_update(_get_current_worker(), done, total, rps, matched)
 
 def _nuclei_extra_stats() -> str:
     """Return real-time Nuclei stats string for spinner display."""

@@ -409,3 +409,95 @@ class TestMainImports(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestWatchdogUI(unittest.TestCase):
+    """Tests for per-worker UI state management and activity log."""
+
+    def setUp(self):
+        import core.ui as ui_mod
+        # Reset worker state before each test
+        for wid in ui_mod._WORKER_SLOTS:
+            ui_mod._workers[wid] = ui_mod._empty_worker(wid)
+        ui_mod._activity.clear()
+
+    def test_worker_register_sets_running(self):
+        from core.ui import ui_worker_register, _workers
+        ui_worker_register("W1", "example.com", idx=1, total=5)
+        self.assertEqual(_workers["W1"]["status"], "running")
+        self.assertEqual(_workers["W1"]["target"], "example.com")
+        self.assertEqual(_workers["W1"]["idx"], 1)
+        self.assertEqual(_workers["W1"]["total"], 5)
+
+    def test_worker_tool_lifecycle(self):
+        from core.ui import (
+            ui_worker_register, ui_worker_tool_started,
+            ui_worker_tool_finished, _workers,
+        )
+        ui_worker_register("W2", "test.io", idx=2, total=10)
+        ui_worker_tool_started("W2", "Subfinder", input_count=3, eta=30.0)
+        self.assertEqual(_workers["W2"]["tools"]["Subfinder"]["status"], "running")
+        self.assertEqual(_workers["W2"]["current_tool"], "Subfinder")
+
+        ui_worker_tool_finished("W2", "Subfinder", count=42, elapsed=28.0)
+        self.assertEqual(_workers["W2"]["tools"]["Subfinder"]["status"], "done")
+        self.assertEqual(_workers["W2"]["tools"]["Subfinder"]["count"], 42)
+        self.assertEqual(_workers["W2"]["metrics"]["subs"], 42)
+        self.assertIsNone(_workers["W2"]["current_tool"])
+
+    def test_worker_tool_cached(self):
+        from core.ui import ui_worker_register, ui_worker_tool_cached, _workers
+        ui_worker_register("W3", "cached.com")
+        ui_worker_tool_cached("W3", "DNSX", count=15)
+        self.assertEqual(_workers["W3"]["tools"]["DNSX"]["status"], "cached")
+        self.assertEqual(_workers["W3"]["tools"]["DNSX"]["count"], 15)
+
+    def test_worker_tool_error(self):
+        from core.ui import ui_worker_register, ui_worker_tool_error, _workers
+        ui_worker_register("W1", "error.io")
+        ui_worker_tool_error("W1", "Nuclei", error="timeout")
+        self.assertEqual(_workers["W1"]["tools"]["Nuclei"]["status"], "error")
+
+    def test_worker_done_increments_scanned(self):
+        from core.ui import ui_worker_register, ui_worker_done, _total_scanned
+        import core.ui as ui_mod
+        before = ui_mod._total_scanned
+        ui_worker_register("W1", "done.com")
+        ui_worker_done("W1", {"target": "done.com", "subdomains": 5, "alive": 2,
+                               "endpoints": 10, "js_secrets": 0, "vulns": 0})
+        self.assertEqual(ui_mod._total_scanned, before + 1)
+
+    def test_activity_log_populated(self):
+        from core.ui import ui_worker_register, _activity
+        ui_worker_register("W1", "log.io", idx=1, total=3)
+        with_this = [e for e in _activity if "log.io" in e[3]]
+        self.assertTrue(len(with_this) >= 1)
+
+    def test_set_worker_context_and_get(self):
+        from core.ui import set_worker_context, _get_current_worker
+        set_worker_context("W2")
+        self.assertEqual(_get_current_worker(), "W2")
+
+    def test_snapshot_creates_file(self):
+        import os, glob
+        from core.ui import ui_snapshot
+        before = set(glob.glob("logs/snapshot_*.json"))
+        ui_snapshot("test", "unit-test context")
+        after = set(glob.glob("logs/snapshot_*.json"))
+        new_files = after - before
+        self.assertTrue(len(new_files) >= 1)
+        # Clean up
+        for f in new_files:
+            try: os.unlink(f)
+            except: pass
+
+    def test_nuclei_update_routes_to_worker(self):
+        from core.ui import (ui_worker_register, ui_worker_tool_started,
+                              ui_worker_nuclei_update, _workers)
+        ui_worker_register("W3", "nuclei.io")
+        ui_worker_tool_started("W3", "Nuclei")
+        ui_worker_nuclei_update("W3", done=500, total=1200, rps=45.0, matched=3)
+        nq = _workers["W3"]["nuclei_req"]
+        self.assertEqual(nq["done"], 500)
+        self.assertEqual(nq["total"], 1200)
+        self.assertEqual(nq["matched"], 3)
