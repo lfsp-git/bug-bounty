@@ -66,7 +66,7 @@ TOOL_TIMEOUTS: dict = {
     "httpx": 120,
     "katana": 180,
     "js_hunter": 30,
-    "nuclei": 600,
+    "nuclei": 3600,
     "api_request": 15,
     "ai_inference_short": 30,
     "ai_inference_long": 60,

@@ -1,4 +1,4 @@
-import os, subprocess, shlex, re, io, shutil, sys
+import os, subprocess, shlex, re, io, shutil, sys, threading, json
 import logging
 from core.ui import ui_log, Colors
 from core.config import get_tool_timeout  # Centralized timeouts
@@ -51,6 +51,8 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
         tmp_stderr = tempfile.NamedTemporaryFile(mode='w', suffix=f'_{label.lower()}_stderr.log',
                                                   delete=False, encoding='utf-8')
         stderr_dest = tmp_stderr
+    # Truncate output file before running to prevent tools from appending to stale data
+    open(outp, 'w').close()
     try:
         # Use timeout from centralized config
         subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False, timeout=get_tool_timeout(label))
@@ -61,13 +63,17 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
     finally:
         if isinstance(stderr_dest, io.IOBase):
             stderr_dest.close()
-        # Log any stderr output from the tool (helps diagnose silent failures)
+        # Log stderr only if it contains actual error messages (filter banners/ASCII art)
         if tmp_stderr:
+            _ERR_KW = ('error', 'fail', 'fatal', 'panic', 'could not', 'unable', 'denied', 'refused', 'exception')
             try:
                 with open(tmp_stderr.name, 'r', encoding='utf-8', errors='ignore') as ef:
                     err_txt = ef.read(500).strip()
                 if err_txt:
-                    ui_log("ENGINE_WARN", f"{label} stderr: {err_txt[:120]}", Colors.WARNING)
+                    if any(kw in err_txt.lower() for kw in _ERR_KW):
+                        ui_log("ENGINE_WARN", f"{label} stderr: {err_txt[:120]}", Colors.WARNING)
+                    else:
+                        logging.debug(f"{label} stderr (info): {err_txt[:200]}")
                 os.unlink(tmp_stderr.name)
             except OSError:
                 pass
@@ -93,17 +99,94 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
            f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2"]
     run_cmd(cmd, "Katana", output_file)
 
-def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50):
-    # -duc: skip update check. -timeout 5: per-request HTTP cap.
-    # -c 25: limit concurrency to prevent hangs on slow targets.
-    # -severity: limit to critical/high/medium only (avoids thousands of info/low templates).
-    # No -stats/-sj: those conflict with -silent and output is discarded anyway.
-    cmd = [find_tool("nuclei"), "-l", input_file, "-o", output_file,
-           "-duc", "-silent", "-rl", str(rate_limit), "-c", "25",
+def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50, progress_callback=None):
+    """Run Nuclei with -stats -sj for real-time progress via stderr streaming.
+    
+    Uses Popen instead of run_cmd to parse JSON stats from stderr in real-time.
+    No -silent: allows -stats -sj to output progress data.
+    Timeout: controlled by config (default 3600s — vulns at any cost).
+    """
+    exe = find_tool("nuclei")
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    # Skip in non-interactive mode
+    if not os.getenv('TERM') or not sys.stdout.isatty():
+        ui_log("ENGINE_SKIP", "Skipping Nuclei in non-interactive mode.", Colors.WARNING)
+        open(output_file, 'w').close()
+        return
+
+    # Verify binary
+    exe_exists = os.path.isfile(exe) and os.access(exe, os.X_OK)
+    if not exe_exists:
+        exe_exists = shutil.which(os.path.basename(exe)) is not None
+    if not exe_exists:
+        ui_log("ENGINE_WARN", "Binary not found: nuclei. Skipping.", Colors.WARNING)
+        open(output_file, 'w').close()
+        return
+
+    # Truncate output file
+    open(output_file, 'w').close()
+
+    # -duc: skip update check. -stats -sj: JSON stats to stderr.
+    # -rl: rate limit. -c 25: concurrency. -timeout 5: per-request HTTP cap.
+    # -severity: critical/high/medium only.
+    cmd = [exe, "-l", input_file, "-o", output_file,
+           "-duc", "-stats", "-sj", "-rl", str(rate_limit), "-c", "25",
            "-timeout", "5", "-severity", "critical,high,medium"]
     if tags:
         cmd.extend(["-tags", tags])
-    run_cmd(cmd, "Nuclei", output_file, stats_pipe=stats_pipe)
+
+    timeout = get_tool_timeout("nuclei")
+
+    proc = None
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                text=True, bufsize=1)
+
+        def _read_stderr():
+            try:
+                for line in proc.stderr:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if progress_callback and line.startswith('{'):
+                        try:
+                            stats = json.loads(line)
+                            progress_callback(stats)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+            except (OSError, ValueError):
+                pass
+            finally:
+                try:
+                    proc.stderr.close()
+                except OSError:
+                    pass
+
+        reader = threading.Thread(target=_read_stderr, daemon=True)
+        reader.start()
+
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            ui_log("ENGINE_WARN", f"Timeout executing Nuclei after {timeout}s.", Colors.WARNING)
+
+        reader.join(timeout=2)
+    except KeyboardInterrupt:
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        raise
+    except Exception as e:
+        ui_log("ENGINE_ERR", f"Nuclei failed: {str(e)[:50]}", Colors.ERROR)
 
 def run_js_hunter(katana_file, output_file):
     """Extrai segredos de arquivos JavaScript encontrados pelo Katana."""

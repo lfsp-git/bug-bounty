@@ -139,8 +139,7 @@ def ui_snapshot(label: str = "manual", context: str = ""):
             f.write("# ─── Tool Status ──────────────────────────────────\n")
             for tool, data in _live_view_data.items():
                 status = data.get("status", "?")
-                count = data.get('subs', data.get('live', data.get('endpoints',
-                        data.get('crawled', data.get('secrets', data.get('vulns', 0))))))
+                count = _get_tool_count(tool, data)
                 f.write(f"#   {tool:<12} {status:<10} count={count}\n")
             
             # Environment (masked keys)
@@ -225,17 +224,49 @@ _LIVE_VIEW_LINES = 12  # lines rendered by live view block (header+sep+7tools+se
 _live_view_active = False
 _live_view_thread = None
 _live_view_data = {
-    "Subfinder": {"status": "idle", "progress": 0, "subs": 0,      "start_time": None, "eta": 0},
-    "DNSX":      {"status": "idle", "progress": 0, "live": 0,      "start_time": None, "eta": 0},
-    "Uncover":   {"status": "idle", "progress": 0, "takeovers": 0, "start_time": None, "eta": 0},
-    "HTTPX":     {"status": "idle", "progress": 0, "endpoints": 0, "start_time": None, "eta": 0},
-    "JS Hunter": {"status": "idle", "progress": 0, "secrets": 0,   "start_time": None, "eta": 0},
-    "Katana":    {"status": "idle", "progress": 0, "crawled": 0,   "start_time": None, "eta": 0},
-    "Nuclei":    {"status": "idle", "progress": 0, "vulns": 0,     "start_time": None, "eta": 0},
+    "Subfinder": {"status": "idle", "progress": 0, "subs": 0,      "start_time": None, "eta": 0, "input_count": 0},
+    "DNSX":      {"status": "idle", "progress": 0, "live": 0,      "start_time": None, "eta": 0, "input_count": 0},
+    "Uncover":   {"status": "idle", "progress": 0, "takeovers": 0, "start_time": None, "eta": 0, "input_count": 0},
+    "HTTPX":     {"status": "idle", "progress": 0, "endpoints": 0, "start_time": None, "eta": 0, "input_count": 0},
+    "JS Hunter": {"status": "idle", "progress": 0, "secrets": 0,   "start_time": None, "eta": 0, "input_count": 0},
+    "Katana":    {"status": "idle", "progress": 0, "crawled": 0,   "start_time": None, "eta": 0, "input_count": 0},
+    "Nuclei":    {"status": "idle", "progress": 0, "vulns": 0,     "start_time": None, "eta": 0, "input_count": 0,
+                  "requests_done": 0, "requests_total": 0, "rps": 0, "matched": 0},
 }
 _live_view_meta = {"target": "", "current": 0, "total": 0}
 _live_view_lock = threading.RLock()  # Re-entrant lock prevents deadlocks from nested acquire calls
 _stdout_lock = threading.Lock()      # Serializes all stdout writes to prevent cursor corruption
+
+# Tool name → count key mapping
+_TOOL_COUNT_KEYS = {
+    "Subfinder": "subs",
+    "DNSX": "live",
+    "Uncover": "takeovers",
+    "HTTPX": "endpoints",
+    "JS Hunter": "secrets",
+    "Katana": "crawled",
+    "Nuclei": "vulns",
+}
+
+def _get_tool_count(tool_name: str, data: dict) -> int:
+    """Get the primary count value for a tool from its live view data."""
+    key = _TOOL_COUNT_KEYS.get(tool_name, "")
+    return data.get(key, 0) if key else 0
+
+def _reset_live_view_data():
+    """Reset all live view data for a new mission."""
+    with _live_view_lock:
+        for tool in _live_view_data:
+            _live_view_data[tool]["status"] = "idle"
+            _live_view_data[tool]["start_time"] = None
+            _live_view_data[tool]["eta"] = 0
+            _live_view_data[tool]["input_count"] = 0
+            key = _TOOL_COUNT_KEYS.get(tool, "")
+            if key:
+                _live_view_data[tool][key] = 0
+            for nk in ("requests_done", "requests_total", "rps", "matched"):
+                if nk in _live_view_data[tool]:
+                    _live_view_data[tool][nk] = 0
 
 def ui_set_mission_meta(target: str, current: int = 0, total: int = 0):
     """Update live view header with current target and progress indicators."""
@@ -271,6 +302,7 @@ def _start_live_view():
     sys.stdout.write(f"\033[{scroll_top};1H")
     sys.stdout.flush()
     _live_view_active = True
+    _reset_live_view_data()
     _live_view_thread = threading.Thread(target=_live_view_loop, daemon=True)
     _live_view_thread.start()
 
@@ -321,7 +353,10 @@ _live_view_update_interval = 1.0
 _live_view_last_update = 0
 
 def _render_live_view():
-    """Renderiza o live view ancorado na base do terminal."""
+    """Renderiza o live view ancorado na base do terminal.
+    
+    Status colors: idle=grey, running=yellow, finished=green(or blue if 0), error=red.
+    """
     global _last_live_view_render, _live_view_last_update
 
     if not sys.stdout.isatty():
@@ -366,44 +401,67 @@ def _render_live_view():
         out.write(f"\r\033[K  {'─'*56}\n")
 
         now = time.time()
+        RST = "\033[0m"
         for tool, data in _live_view_data.items():
-            status_icon = "🟢" if data["status"] == "running" else "🟡" if data["status"] == "idle" else "🔴"
+            count = _get_tool_count(tool, data)
+            status = data["status"]
 
-            # Compute progress ratio from start_time + eta
+            # Determine color based on status
+            if status == "idle":
+                color = "\033[90m"       # dim grey
+            elif status == "running":
+                color = "\033[33m"       # yellow
+            elif status == "finished":
+                color = "\033[32m" if count > 0 else "\033[34m"  # green / blue
+            elif status == "error":
+                color = "\033[31m"       # red
+            else:
+                color = "\033[90m"
+
+            # Status icon (colored circle)
+            icon = f"{color}●{RST}"
+
+            # Compute progress ratio
             start_t = data.get("start_time")
             eta = data.get("eta", 0)
-            if data["status"] == "running" and start_t and eta > 0:
-                ratio = min(1.0, (now - start_t) / eta)
-            else:
-                ratio = 1.0 if data["status"] == "idle" and any(
-                    data.get(k, 0) > 0 for k in ("subs", "live", "endpoints", "crawled", "secrets", "vulns", "takeovers")
-                ) else 0.0
 
-            filled = int(ratio * 20)
-            empty = 20 - filled
-            # Color: green < 65%, yellow 65-85%, red > 85%
-            if data["status"] == "running":
-                if ratio < 0.65:
-                    bar_color = "\033[32m"   # green
-                elif ratio < 0.85:
-                    bar_color = "\033[33m"   # yellow
+            if status == "running":
+                if tool == "Nuclei" and data.get("requests_total", 0) > 0:
+                    ratio = min(1.0, data["requests_done"] / data["requests_total"])
+                elif start_t and eta > 0:
+                    ratio = min(1.0, (now - start_t) / eta)
                 else:
-                    bar_color = "\033[31m"   # red
+                    ratio = 0.0
+            elif status in ("finished", "error"):
+                ratio = 1.0
             else:
-                bar_color = "\033[90m"       # dim grey for idle
-            reset = "\033[0m"
-            progress_bar = f"{bar_color}{'█' * filled}{reset}{'░' * empty}"
+                ratio = 0.0
 
-            count = data.get('subs', data.get('live', data.get('endpoints', data.get('crawled', data.get('secrets', data.get('vulns', 0))))))
-            out.write(f"\r\033[K  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {count:<6}\n")
+            filled = int(ratio * 15)
+            empty = 15 - filled
+            bar = f"{color}{'█' * filled}{RST}{'░' * empty}"
+
+            # ETA / stats info for running tools
+            extra = ""
+            if status == "running":
+                if tool == "Nuclei" and data.get("requests_total", 0) > 0:
+                    rps = data.get("rps", 0)
+                    pct = int(ratio * 100)
+                    extra = f" {rps}r/s {pct}%"
+                elif start_t and eta > 0:
+                    remaining = max(0, int(eta - (now - start_t)))
+                    extra = f" ~{remaining}s"
+
+            out.write(f"\r\033[K  {icon} {tool:<12} [{bar}] {color}{status:<9}{RST} {count:<5}{extra}\n")
 
         out.write(f"\r\033[K  {'─'*56}\n")
 
         total_subs = _live_view_data["Subfinder"].get("subs", 0)
         total_live = _live_view_data["DNSX"].get("live", 0)
-        total_endpoints = _live_view_data["HTTPX"].get("endpoints", 0)
+        total_tech = _live_view_data["HTTPX"].get("endpoints", 0)
+        total_ep = _live_view_data["Katana"].get("crawled", 0)
         total_vulns = _live_view_data["Nuclei"].get("vulns", 0)
-        out.write(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} subs | {total_live} live | {total_endpoints} endpoints | {total_vulns} vulns{Colors.RESET}\n")
+        out.write(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} SUB | {total_live} LV | {total_tech} TECH | {total_ep} EP | {total_vulns} VN{Colors.RESET}\n")
         out.write(f"\r\033[K  {'─'*56}\n")
 
         # Return cursor to bottom of scroll region so log output stays above live view

@@ -58,7 +58,7 @@ def _record_tool_time(label: str, elapsed: float):
         logging.warning(f"Failed to save tool times: {e}")
 
 def _run_with_progress(label, fn, live_tail_pipe=None):
-    """Execute tool with progress spinner. Gracefully handles failures (continues on error)."""
+    """Execute tool with progress spinner. Returns True on success, False on error."""
     start_time = time.time()
     stop_event = threading.Event()
     history = _load_tool_times().get(label, [])
@@ -74,11 +74,13 @@ def _run_with_progress(label, fn, live_tail_pipe=None):
             time.sleep(0.2)
 
     t = threading.Thread(target=_spinner); t.start()
+    success = False
     try:
         fn()  # Execute tool
         elapsed_total = time.time() - start_time
         _record_tool_time(label, elapsed_total)
         ui_log(label, f"Done in {int(elapsed_total)}s", Colors.DIM)
+        success = True
     except KeyboardInterrupt:
         stop_event.set()
         t.join(timeout=0.5)
@@ -91,6 +93,7 @@ def _run_with_progress(label, fn, live_tail_pipe=None):
         stop_event.set()
         if t.is_alive():
             t.join(timeout=2.0)  # give spinner up to 2s to exit cleanly (was 0.5)
+    return success
 
 def _count_lines(filepath):
     try:
@@ -99,22 +102,38 @@ def _count_lines(filepath):
         logging.debug(f"Cannot count lines in {filepath}: {e}")
         return 0
 
-def _tool_start(name: str):
-    """Mark tool as running in live view with start_time + historical ETA."""
+def _tool_start(name: str, input_count: int = 0):
+    """Mark tool as running in live view with start_time, historical ETA, and input count."""
     history = _load_tool_times().get(name, [])
     avg = sum(history) / len(history) if history else 60.0
     with _live_view_lock:
         _live_view_data[name]["status"] = "running"
         _live_view_data[name]["start_time"] = time.time()
         _live_view_data[name]["eta"] = avg
+        _live_view_data[name]["input_count"] = input_count
 
 def _tool_done(name: str, count_key: str, count_file: str = ""):
-    """Mark tool as idle in live view and update count from file."""
+    """Mark tool as finished in live view and update count from file."""
     count = _count_lines(count_file) if count_file and os.path.exists(count_file) else 0
     with _live_view_lock:
-        _live_view_data[name]["status"] = "idle"
+        _live_view_data[name]["status"] = "finished"
         _live_view_data[name]["start_time"] = None
         _live_view_data[name][count_key] = count
+
+def _tool_error(name: str):
+    """Mark tool as error in live view."""
+    with _live_view_lock:
+        _live_view_data[name]["status"] = "error"
+        _live_view_data[name]["start_time"] = None
+
+def _nuclei_progress_callback(stats):
+    """Update live view with Nuclei stats from -sj JSON output."""
+    with _live_view_lock:
+        d = _live_view_data["Nuclei"]
+        d["requests_done"] = stats.get("requests", stats.get("sent", 0))
+        d["requests_total"] = stats.get("total", 0)
+        d["rps"] = stats.get("rps", 0)
+        d["matched"] = stats.get("matched", 0)
 
 def _count_findings(filepath):
     try:
@@ -144,31 +163,31 @@ class MissionRunner:
         sub_file = paths["sub"]
         limiter = get_rate_limiter(REQUESTS_PER_SECOND)
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("Subfinder")
-        _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
-        _tool_done("Subfinder", "subs", sub_file)
+        _tool_start("Subfinder", input_count=count_lines(dom_file))
+        ok = _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
+        _tool_done("Subfinder", "subs", sub_file) if ok else _tool_error("Subfinder")
         
         # DNSX: valida subdomínios e obtém IPs
         live_file = paths["live"]
         unv_file = paths["unv"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("DNSX")
-        _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
-        _tool_done("DNSX", "live", live_file)
+        _tool_start("DNSX", input_count=count_lines(sub_file))
+        ok = _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
+        _tool_done("DNSX", "live", live_file) if ok else _tool_error("DNSX")
         
         # Uncover: detecta takeover potentials
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
         uncover_file = paths["sub"] + ".uncover"
         _tool_start("Uncover")
-        _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
-        _tool_done("Uncover", "takeovers", uncover_file)
+        ok = _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
+        _tool_done("Uncover", "takeovers", uncover_file) if ok else _tool_error("Uncover")
         
         # HTTPX: descobre endpoints (output = full URLs with protocol)
         httpx_file = paths["live"] + ".httpx"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("HTTPX")
-        _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
-        _tool_done("HTTPX", "endpoints", httpx_file)
+        _tool_start("HTTPX", input_count=count_lines(live_file))
+        ok = _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
+        _tool_done("HTTPX", "endpoints", httpx_file) if ok else _tool_error("HTTPX")
         
         # Para obter não resolvidos, comparar com a lista de subdomínios
         if os.path.exists(sub_file) and os.path.exists(live_file):
@@ -197,23 +216,25 @@ class MissionRunner:
         # Katana: crawling inteligente com URLs do HTTPX
         katana_file = paths["live"] + ".katana"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("Katana")
-        _run_with_progress("Katana", lambda: run_katana_surgical(recon_input, katana_file, rate_limit=RATE_LIMIT))
-        _tool_done("Katana", "crawled", katana_file)
+        _tool_start("Katana", input_count=count_lines(recon_input))
+        ok = _run_with_progress("Katana", lambda: run_katana_surgical(recon_input, katana_file, rate_limit=RATE_LIMIT))
+        _tool_done("Katana", "crawled", katana_file) if ok else _tool_error("Katana")
         
         # JS Hunter: extrai segredos de arquivos JavaScript
         js_secrets_file = paths["live"] + ".js_secrets"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
         _tool_start("JS Hunter")
-        _run_with_progress("JS Hunter", lambda: run_js_hunter(katana_file, js_secrets_file))
-        _tool_done("JS Hunter", "secrets", js_secrets_file)
+        ok = _run_with_progress("JS Hunter", lambda: run_js_hunter(katana_file, js_secrets_file))
+        _tool_done("JS Hunter", "secrets", js_secrets_file) if ok else _tool_error("JS Hunter")
         
         # Nuclei: scanning de vulnerabilidades com URLs do HTTPX
         findings_file = paths["fin"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("Nuclei")
-        _run_with_progress("Nuclei", lambda: run_nuclei(recon_input, findings_file, "cve,misconfig,takeover", self.stats_pipe))
-        _tool_done("Nuclei", "vulns", findings_file)
+        _tool_start("Nuclei", input_count=count_lines(recon_input))
+        ok = _run_with_progress("Nuclei", lambda: run_nuclei(
+            recon_input, findings_file, "cve,misconfig,takeover",
+            self.stats_pipe, progress_callback=_nuclei_progress_callback))
+        _tool_done("Nuclei", "vulns", findings_file) if ok else _tool_error("Nuclei")
         
         # Consolidar filtragem e validação em um passo único
         if os.path.exists(findings_file):
