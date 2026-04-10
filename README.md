@@ -1,117 +1,75 @@
-# 🛡️ HUNT3R v1.0-EXCALIBUR: Autonomous Bug Bounty Hunter
+# Hunt3r v1.0-EXCALIBUR — Tactical Autonomous Bug Bounty Hunter
 
-## 🎯 Mission
-Hunt3r is an autonomous reconnaissance and vulnerability scanner for bug bounty hunters. It automates the full pipeline — from target discovery to **submission-ready reports** — via Telegram/Discord notifications.
+Hunt3r is an autonomous recon + vuln hunting pipeline focused on fast cycles, low false positives, and operational visibility in terminal-first environments.
 
-## 🔄 Pipeline (Predator Cycle)
-1. **WATCHDOG**: Collects wildcards from HackerOne, BugCrowd, Intigriti every 4-6h (12h cache)
-2. **DIFF ENGINE**: Compares with baselines, processes only new/modified targets
-3. **RECON PHASE** (1h smart cache per tool):
-   - Subfinder (subdomain enumeration)
-   - DNSX (live subdomain resolution)
-   - Uncover (takeover candidate detection)
-   - HTTPX (tech fingerprint + live URL discovery — output feeds Katana/Nuclei)
-4. **TACTICAL PHASE**:
-   - Katana crawler (`-timeout 15 -depth 2`, 1h cache)
-   - JS Hunter (real extraction of secrets from JS assets, JSONL output with severity — **never cached**)
-   - Nuclei (`-severity critical,high,medium -tags cve,misconfig,takeover -c 25 -timeout 5 -duc -stats -sj` — **never cached**)
-5. **VALIDATION**: FalsePositiveKiller (6 filters) + AI confirmation (score ≥ 80)
-6. **NOTIFICATION**: Telegram (Critical/High/Medium) · Discord (Low/Info)
-7. **REPORT**: Markdown bug bounty report ready for H1/BC/IT submission
+## Current state
 
-## 🚀 Quick Start
+- **Phase status**: FASE 8 complete (ML false-positive layer integrated)
+- **Watchdog UI**: Rich Live full-screen tactical dashboard (3 worker panels + activity log)
+- **Latest tests**: `66 passed, 5 warnings, 11 subtests passed`
+- **Recent core commits**:
+  - `c7e1084` UX telemetry alignment for watchdog
+  - `14d2c57` full tactical UI redesign (3 workers)
+  - `9d2fbd9` military-grade Rich Live watchdog display
+  - `8d29e27` silent-failure + tool-times watchdog fixes
+
+## Pipeline (Predator cycle)
+
+1. **WATCHDOG**: wildcard collection + prioritization + 3 parallel workers
+2. **DIFF ENGINE**: baseline compare, only changed/new data gets attention
+3. **RECON**: Subfinder -> DNSX -> Uncover -> HTTPX
+4. **TACTICAL**: Katana -> JS Hunter -> Nuclei
+5. **FILTERING**: 8-layer FalsePositiveKiller (last layer = ML filter)
+6. **AI VALIDATION**: score-based validation path
+7. **NOTIFY + REPORT**: Telegram/Discord + markdown bug bounty report
+
+## Quick start
+
 ```bash
 pip install -r requirements.txt
-cp .env.example .env  # Fill in API keys and Telegram/Discord tokens
-
-python3 main.py              # Interactive menu
-python3 main.py --watchdog   # 24/7 autonomous mode
-python3 main.py --dry-run    # Preview targets, no tools executed
-python3 main.py --export csv # Export findings (csv|xlsx|xml)
-python3 main.py --resume <id> # Resume interrupted scan
+cp .env.example .env
+python3 main.py
 ```
 
-## ⚙️ Environment (.env)
-```
-H1_TOKEN=your_hackerone_token
-H1_USER=your_hackerone_username
-BC_TOKEN=your_bugcrowd_token
-IT_TOKEN=your_intigriti_token
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-DISCORD_WEBHOOK=your_discord_webhook_url
-OPENROUTER_API_KEY=your_openrouter_key  # optional, for AI validation
-SHODAN_API_KEY=your_shodan_key          # optional, for Uncover
-```
+Useful modes:
 
-## 📊 Live View (Terminal UI)
-Real-time htop-style dashboard frozen at the bottom of the terminal:
-- **Status icons**: ● grey (idle) → yellow (running) → **cyan (cached)** → green (done) / blue (0) / red (error)
-- **Progress bars**: colored by status; Nuclei uses real request progress from `-stats -sj`
-- **Counters**: `TOTAL: x SUB | x LV | x TECH | x EP | x VN`
-- **ETA**: based on historical tool times (last 5 runs); Nuclei shows live `Req/s | done/total | hits`
-- CTRL+C during scan: gracefully stops tools, cleans up live view, returns to menu
-- **SIGWINCH**: terminal resize clears stale spinner text and re-anchors scroll region
-
-## 🗂️ Architecture
-```
-main.py                     ← CLI entry point (~290 lines)
-core/
-  scanner.py                ← MissionRunner + ProOrchestrator + smart cache + auto-cleanup
-  ui.py                     ← Terminal UI, scroll region, _stdout_lock, live view, snapshots
-  config.py                 ← Constants, timeouts, rate limiter, validators
-  filter.py                 ← FalsePositiveKiller (6 filters: WAF, placeholder, Micro, NULL, PH, curl)
-  watchdog.py               ← 24/7 autonomous scan loop
-  updater.py                ← PDTM + nuclei-templates auto-update
-  ai.py                     ← AIClient + IntelMiner (OpenRouter)
-  storage.py                ← ReconDiff + CheckpointManager
-  notifier.py               ← NotificationDispatcher (Telegram/Discord)
-  reporter.py               ← BugBountyReporter (Markdown reports)
-  export.py                 ← CSV/XLSX/XML export + dry-run
-recon/
-  engines.py                ← Tool wrappers; run_nuclei uses Popen + real-time stats streaming
-  js_hunter.py              ← JSHunter (real JS secret extraction via regex, JSONL output)
-  platforms.py              ← H1/BC/IT API clients
-  tool_discovery.py         ← find_tool() with cache (~/.pdtm/go/bin + ~/go/bin + PATH)
-reports/                    ← Generated bug bounty reports (Markdown)
-recon/baselines/            ← Per-target scan baselines and findings (JSONL)
-recon/tool_times.json       ← Historical tool execution times (ETA source)
-logs/
-  hunt3r.log                ← Persistent scan log
-  snapshots/                ← Auto-captured terminal snapshots on errors/SIGINT (auto-cleaned >1h)
-```
-
-## 📤 Output
-After each scan:
-- `recon/baselines/<handle>/findings.jsonl` — raw Nuclei findings (filtered)
-- `recon/baselines/<handle>/live.txt.js_secrets` — JS secrets (JSONL with severity)
-- `reports/<handle>_<date>_report.md` — submission-ready Markdown report
-- Telegram: Critical/High/Medium alerts (per finding + JS secrets)
-- Discord: Low/Info batch logs
-
-## 🔧 Key Configuration (`core/config.py`)
-```python
-TOOL_TIMEOUTS = {
-    "subfinder": 60, "dnsx": 60, "httpx": 120,
-    "katana": 180, "nuclei": 3600,  # 1h — vulns at any cost
-}
-RATE_LIMIT = 50          # requests/s for tools
-MAX_SUBS_PER_TARGET = 2000
-_CACHE_TTL = 3600        # 1h cache for recon tools (scanner.py)
-```
-
-## 🧪 Tests
 ```bash
-python3 -m pytest tests/ -q   # 52 tests, 52 PASS (36 unit + 16 integration)
+python3 main.py --watchdog
+python3 main.py --dry-run
+python3 main.py --resume <mission_id>
+python3 main.py --export csv
 ```
 
-## 📝 Changelog
-See `docs/CHANGELOG.md`
+## Watchdog UI/UX (current)
 
-## 🙏 Credits
-- [ProjectDiscovery](https://projectdiscovery.io) — subfinder, dnsx, httpx, katana, nuclei, uncover
-- Telegram Bot API / Discord Webhooks
-- OpenRouter AI API
+- Full-screen Rich Live (`screen=True`) for stable in-place rendering
+- Top banner with cycle/runtime + operational counters: `RUN / DONE / ERR`
+- 3 fixed worker panels (`W1`, `W2`, `W3`) with per-tool progress
+- Rolling activity log with timestamps and worker tags (`[W1]`, `[W2]`, `[W3]`)
+- Dynamic worker-slot mapping via queue to keep panel↔thread consistency
+- Auto-snapshot on worker/scan errors:
+  - `logs/snapshot_<label>_<timestamp>.json`
 
-## 📄 License
-MIT
+## Main modules
+
+- `core/scanner.py`: MissionRunner + ProOrchestrator + runtime pipeline orchestration
+- `core/watchdog.py`: 24/7 loop, API target sync, parallel execution, worker assignment
+- `core/ui.py`: tactical terminal dashboard, activity feed, snapshots, worker state
+- `core/filter.py` + `core/ml_filter.py`: 8-layer FP filtering with ML model support
+- `recon/engines.py`: tool wrappers and Nuclei progress streaming
+
+## Testing
+
+```bash
+python3 -m py_compile core/ui.py core/watchdog.py core/scanner.py
+python3 -m pytest tests/ -q
+```
+
+## Documentation map
+
+- `docs/HUNT3R_SPEC.md`: technical architecture/spec
+- `docs/CHANGELOG.md`: release history and notable fixes
+- `STATUS.md`: current execution status snapshot
+- `PLAN.md`: phase roadmap and milestones
+- `FASE8_SUMMARY.md`: ML integration/training details
+
