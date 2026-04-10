@@ -130,11 +130,11 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=Non
     open(output_file, 'w').close()
 
     # -duc: skip update check. -stats -sj: JSON stats to stderr.
-    # -rl: rate limit. -c: concurrency. -timeout 5: per-request HTTP cap.
+    # -rl: rate limit. -c: concurrency. -timeout 2: per-request HTTP cap (fast responsive check).
     # -severity: critical/high/medium only.
     cmd = [exe, "-l", input_file, "-o", output_file,
            "-duc", "-stats", "-sj", "-rl", str(rate_limit), "-c", str(NUCLEI_CONCURRENCY),
-           "-timeout", "5", "-severity", "critical,high,medium"]
+           "-timeout", "2", "-severity", "critical,high,medium"]
     if tags:
         cmd.extend(["-tags", tags])
 
