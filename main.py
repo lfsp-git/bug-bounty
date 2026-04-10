@@ -99,7 +99,8 @@ def state_platforms(orch: ProOrchestrator) -> None:
     if not sel:
         return
 
-    cached = orch.intel.load_cached_programs()
+    orch._ensure_intel()
+    cached = orch.intel.load_cached_programs()  # type: ignore[union-attr]
     if cached:
         ui_log("H1 CACHE", f"{len(cached)} programas carregados do cache.", Colors.SUCCESS)
         ranked = cached
@@ -112,7 +113,7 @@ def state_platforms(orch: ProOrchestrator) -> None:
             except EOFError:
                 pass
             return
-        ranked = orch.intel.rank_programs_for_list(progs)
+        ranked = orch.intel.rank_programs_for_list(progs)  # type: ignore[union-attr]
 
     print()
     ui_target_selection_list(ranked)
