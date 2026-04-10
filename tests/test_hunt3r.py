@@ -340,6 +340,15 @@ class TestNotifier(unittest.TestCase):
 
         self.assertTrue(callable(NotificationDispatcher.alert_nuclei))
 
+    def test_notifier_dedup_cache_roundtrip(self):
+        from core import notifier as notifier_mod
+
+        with tempfile.TemporaryDirectory() as td:
+            cache_path = os.path.join(td, "dedup.json")
+            with patch.object(notifier_mod, "NOTIFY_DEDUP_CACHE_FILE", cache_path):
+                self.assertFalse(notifier_mod._is_duplicate_and_record("k1"))
+                self.assertTrue(notifier_mod._is_duplicate_and_record("k1"))
+
 
 # ---------------------------------------------------------------------------
 # core/reporter.py

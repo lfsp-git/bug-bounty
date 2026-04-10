@@ -24,7 +24,7 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
         """When bbscope is not found and cache is expired, _fetch_global_wildcards returns []."""
         import core.watchdog as wd
 
-        with patch("recon.tool_discovery.find_tool", return_value="bbscope"), \
+        with patch("recon.tools.find_tool", return_value="bbscope"), \
              patch("shutil.which", return_value=None), \
              patch("os.path.exists", return_value=False), \
              patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "BC_TOKEN": "", "IT_TOKEN": ""}):
@@ -40,7 +40,7 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
         def mock_fetch_task(name, cmd, timeout):
             captured_cmds.append(cmd[0])
 
-        with patch("recon.tool_discovery.find_tool", return_value="/usr/local/bin/bbscope"), \
+        with patch("recon.tools.find_tool", return_value="/usr/local/bin/bbscope"), \
              patch("shutil.which", return_value="/usr/local/bin/bbscope"), \
              patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "BC_TOKEN": "", "IT_TOKEN": ""}), \
              patch("subprocess.run") as mock_run:
@@ -54,6 +54,12 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
         # Just verify no exception raised and path resolution is called
         from recon.tool_discovery import find_tool
         self.assertIsNotNone(find_tool)
+
+    def test_compute_next_sleep_seconds_returns_int(self):
+        import core.watchdog as wd
+        secs = wd._compute_next_sleep_seconds({"targets": 10, "changed": 0, "errors": 0})
+        self.assertIsInstance(secs, int)
+        self.assertGreater(secs, 0)
 
 
 class TestLiveViewRaceCondition(unittest.TestCase):
@@ -128,6 +134,20 @@ class TestDryRunPipeline(unittest.TestCase):
         loaded = cm.load("test_integ_handle")
         self.assertIsNotNone(loaded)
         self.assertEqual(loaded.get("mission_id"), "test_integ_handle")
+
+    def test_unified_output_and_state_exports(self):
+        from core.output import ExportFormatter
+        from core.state import CheckpointManager
+
+        self.assertTrue(callable(ExportFormatter))
+        self.assertTrue(callable(CheckpointManager))
+
+    def test_unified_runner_and_tools_exports(self):
+        from core.runner import ProOrchestrator
+        from recon.tools import find_tool
+
+        self.assertTrue(callable(ProOrchestrator))
+        self.assertTrue(callable(find_tool))
 
     def test_recon_diff_baseline_roundtrip(self):
         """ReconDiff save/load baseline cycle preserves data."""

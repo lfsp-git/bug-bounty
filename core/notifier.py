@@ -8,7 +8,7 @@ import os
 import json
 import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from core.ui import ui_log, Colors
 from core.config import NOTIFY_DEDUP_CACHE_FILE, NOTIFY_DEDUP_TTL_SECONDS
 
@@ -71,6 +71,10 @@ def _tg_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _load_dedup_cache() -> dict:
     try:
         if os.path.exists(NOTIFY_DEDUP_CACHE_FILE):
@@ -93,7 +97,7 @@ def _save_dedup_cache(cache: dict) -> None:
 
 
 def _is_duplicate_and_record(key: str) -> bool:
-    now = int(datetime.utcnow().timestamp())
+    now = int(_utc_now().timestamp())
     cache = _load_dedup_cache()
     # prune expired entries
     fresh = {
@@ -217,7 +221,7 @@ class NotificationDispatcher:
             "description": description or "Nenhum finding adicional.",
             "color": 0x555555,
             "footer": {"text": f"Total: {len(findings)} | Info/Low batched"},
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _utc_now().isoformat(),
         }
         _dc_post(dc, embed)
 
@@ -340,7 +344,7 @@ class NotificationDispatcher:
             "title": "Hunt3r Recon Log",
             "description": message,
             "color": 0x3366CC,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _utc_now().isoformat(),
         }
         _dc_post(dc, embed)
 
