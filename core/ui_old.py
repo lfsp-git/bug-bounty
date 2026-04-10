@@ -130,10 +130,6 @@ def ui_log(module: str, message: str, color=Colors.RESET):
     # Also write to file
     logging.info(f"{module} - {message}")
 
-def _buffer_append(module: str, message: str):
-    """Alias for ui_log (for backward compatibility)"""
-    ui_log(module, message)
-
 def ui_update_status(step: str, detail: str, color=Colors.PRIMARY):
     """Update a status line (used by spinners)"""
     ui_log(step, detail, color)
@@ -461,108 +457,11 @@ def _sigwinch_handler(signum, frame):
 signal.signal(signal.SIGINT, _sigint_handler)
 signal.signal(signal.SIGWINCH, _sigwinch_handler)
 
-# ─────────────────────────────────────────────────────────────
-# Interactive Menu Functions (for main.py)
-# ─────────────────────────────────────────────────────────────
-
-def ui_model_selection_menu(models: list) -> str:
-    """Select AI model from list"""
-    print(f"\n\r\033[K  {'─'*56}")
-    print(f"\r\033[K  {Colors.BOLD}MODELOS OPENROUTER{Colors.RESET}")
-    print(f"\r\033[K  {'─'*56}\n")
-    for idx, m in enumerate(models, 1):
-        mid = m.get('id', 'unknown')[:42]
-        name = m.get('name', mid)[:24]
-        print(f"\r\033[K    {Colors.SECONDARY}[{idx:<2}]{Colors.RESET} {Colors.INFO}{name:<26}{Colors.RESET} {Colors.DIM}{mid}{Colors.RESET}")
-    print(f"\n\r\033[K  {'─'*56}")
-    try:
-        return input(f"\r\033[K  {Colors.BOLD}Selecione o modelo (1-{len(models)}): {Colors.RESET}").strip()
-    except EOFError:
-        return ""
-
-def ui_platform_selection_menu(platforms: list) -> str:
-    """Select platform from list"""
-    if not platforms:
-        return ''
-    print("\n  Plataformas disponíveis:")
-    for i, p in enumerate(platforms, 1):
-        name = p.get('name', str(p))
-        print(f"   [{i}] {name}")
-    try:
-        sel = int(input(f"  Selecione (1-{len(platforms)}): ").strip())
-    except (EOFError, ValueError, KeyboardInterrupt):
-        return ''
-    if 1 <= sel <= len(platforms):
-        return platforms[sel-1].get('name')
-    return ''
-
-def ui_target_selection_list(ranked: list):
-    """Display ranked targets for selection"""
-    if not ranked:
-        print("  (Nenhum alvo)")
-        return
-    for i, t in enumerate(ranked, 1):
-        handle = t.get('handle', 'unknown')
-        score = t.get('score', 0)
-        print(f"  [{i}] {handle} (score: {score})")
-
-def ui_manual_target_input() -> dict:
-    """Prompt user for manual target"""
-    from core.config import validate_and_extract_domain
-    
-    try:
-        dom = input("  Dominio (ex: example.com): ").strip()
-        if not dom:
-            return {}
-        
-        clean_domain = validate_and_extract_domain(dom)
-        if not clean_domain:
-            print(f"  {Colors.ERROR}Dominio invalido. Use formato: example.com ou https://example.com{Colors.RESET}")
-            return {}
-        
-        handle = clean_domain.replace('.', '_').replace('-', '_')
-        return {'domains': [clean_domain], 'handle': handle, 'score': 30}
-    except Exception as e:
-        logging.error(f"Manual target input error: {e}")
-        return {}
-
-def ui_custom_targets_list(targets: list) -> dict:
-    """Show custom targets and return selected"""
-    if not targets:
-        return {}
-    for i, t in enumerate(targets, 1):
-        print(f"  [{i}] {t.get('domain')}")
-    try:
-        sel = int(input(f"  Selecione (1-{len(targets)}): ").strip())
-        if 1 <= sel <= len(targets):
-            return targets[sel-1]
-    except (ValueError, EOFError, KeyboardInterrupt):
-        pass
-    return {}
-
-def ui_main_menu() -> str:
-    """Display main menu"""
-    ui_clear()
-    ui_banner()
-    print(f"  {Colors.BOLD}MENU PRINCIPAL{Colors.RESET}")
-    print(f"  {'─'*40}")
-    print(f"  {Colors.SECONDARY}[1]{Colors.RESET} {Colors.INFO}Executar Watchdog (Recon Contínuo){Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[2]{Colors.RESET} {Colors.INFO}Executar Scan Unico (Alvo Especifico){Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[3]{Colors.RESET} {Colors.INFO}Trocar Modelo de IA{Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[0]{Colors.RESET} {Colors.INFO}Sair{Colors.RESET}")
-    print(f"  {'─'*40}")
-    try:
-        return input(f"  {Colors.BOLD}Escolha uma opcao: {Colors.RESET}").strip()
-    except EOFError:
-        return ""
-
 # Backward compatibility exports
 __all__ = [
     'ui_log', 'ui_update_status', 'ui_banner', 'ui_clear', 'ui_clear_and_banner',
     'ui_mission_header', 'ui_mission_footer', 'ui_scan_summary', 'ui_set_mission_meta',
     'ui_snapshot', 'Colors', 'ICONS', 'sanitize_input',
     'tool_started', 'tool_finished', 'tool_cached', 'tool_error', 'nuclei_update',
-    '_live_view_data', '_live_view_lock', '_stdout_lock', '_buffer_append',
-    'ui_main_menu', 'ui_model_selection_menu', 'ui_platform_selection_menu',
-    'ui_target_selection_list', 'ui_manual_target_input', 'ui_custom_targets_list'
+    '_live_view_data', '_live_view_lock', '_stdout_lock'
 ]

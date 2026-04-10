@@ -7,3 +7,4 @@ httpx
 pydantic
 pydantic-settings
 tldextract
+rich
