@@ -7,7 +7,7 @@ ready for submission to H1, BugCrowd, and Intigriti.
 import json
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class BugBountyReporter:
         # Sort by severity
         findings.sort(key=lambda x: SEVERITY_ORDER.get(x.get("severity", "info").lower(), 99))
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         report_path = os.path.join(REPORTS_DIR, f"{self.handle}_{timestamp}_report.md")
 
         report = self._build_report(findings, js_secrets, subdomains_count, endpoints_count)
@@ -101,7 +101,7 @@ class BugBountyReporter:
         subdomains_count: int,
         endpoints_count: int,
     ) -> str:
-        date_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         lines = []
 
         # Header
