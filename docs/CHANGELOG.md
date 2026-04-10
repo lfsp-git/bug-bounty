@@ -1,6 +1,47 @@
 # Hunt3r Changelog
 
-## v1.0-EXCALIBUR — Clean Architecture (current)
+## v1.0-EXCALIBUR — Session 2 Bug Fixes (current) — `ac59c92`
+
+### Nuclei
+- Fixed `-uau` (invalid flag) → removed (caused silent 0s exit)
+- Fixed `-t tags_string` (template path flag) → corrected to `-tags`
+- Fixed `-rate-limit=N` → corrected to `-rl N`
+- Added `-duc` to skip Nuclei update check (~5s saved on startup)
+- Added `-timeout 5` per-template HTTP cap to prevent hangs
+- Added `-severity critical,high,medium` to restrict template scope
+  (cve+misconfig+takeover = thousands of templates; was always timing out)
+- Added `-c 25` concurrency cap for slow/gov targets
+- Removed `-stats -sj` (conflict with `-silent`; output went to DEVNULL)
+- Lowered default rate limit `100 → 50`
+
+### UI / Terminal
+- Banner + Live View frozen at fixed positions via terminal scroll region
+  (`_FIXED_TOP=12` = banner 7 + header box 5; `_LIVE_VIEW_LINES=12`)
+- Progress bars colored by elapsed/ETA ratio (green/yellow/red)
+- `_stdout_lock` (`threading.Lock`) serializes all stdout writes
+- `_render_live_view` uses non-blocking acquire to skip frame during main-thread writes
+- `ui_scan_summary` now holds `_stdout_lock` while printing (no spinner interleave)
+- `ui_mission_footer()` called BEFORE `ui_scan_summary()` (stops live view thread first)
+- `ui_mission_footer` no longer calls `clear` (was wiping scan summary)
+- Spinner thread join timeout: `0.5s → 2.0s`
+
+### Scanner / Pipeline
+- Katana + Nuclei now receive HTTPX URLs (full URLs) instead of raw hostnames
+- `_tool_start(name)` / `_tool_done(name, key, file)` helpers added
+- `results` dict includes `target`, `alive`, `score` keys (was showing "UNKNOWN")
+- `class MissionRunner:` declaration was accidentally deleted → restored
+- CTRL+C at `[Enter para voltar]` prompt no longer produces traceback
+
+### Engines / Debug
+- `run_cmd`: stderr now captured to temp file; logged if non-empty (first 120 chars)
+  (previously silently discarded — was masking all tool errors)
+
+### Tests
+- **52 tests, 52 PASS** (36 unit + 16 integration) at every commit in this session
+
+---
+
+## v1.0-EXCALIBUR — Clean Architecture — `93bfbee`
 
 ### Refactor: 25 arquivos → 12 módulos unificados
 - `core/config.py` — merged: constants + timeouts + rate_limiter + dedup + validators

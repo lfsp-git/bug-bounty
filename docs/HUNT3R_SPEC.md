@@ -4,44 +4,45 @@
 1. **WATCHDOG**: coleta wildcards (H1/BC/IT) em ciclos de 4–6h com cache de 12h.
 2. **DIFF ENGINE**: compara com `recon/baselines/{handle}.json`, processa apenas novos/alterados.
 3. **RECON**: Subfinder → DNSX → Uncover → HTTPX.
-4. **TACTICAL**: Katana crawler → JS Hunter → Nuclei (tags: cve, takeover, misconfig).
-5. **VALIDATION**: FalsePositiveKiller (6 filtros) + AI scoring (IntelMiner, score ≥ 80).
+4. **TACTICAL**: Katana crawler → JS Hunter → Nuclei (`-tags cve,misconfig,takeover -severity critical,high,medium`).
+5. **VALIDATION**: FalsePositiveKiller (6 filtros) + AI scoring (AIClient, score ≥ 80).
 6. **NOTIFY**: Telegram (Critical/High/Medium) · Discord (Low/Info batch).
 7. **REPORT**: BugBountyReporter gera `reports/<handle>_<date>_report.md`.
 
 ## 🧩 ARCHITECTURE (Clean)
 
 ```
-main.py (CLI entry point)
+main.py (CLI entry point, ~283 linhas)
   ├── ProOrchestrator
   │     └── MissionRunner.run()
   │           ├── _run_recon_phase()          [subfinder/dnsx/uncover/httpx]
   │           ├── _run_vulnerability_phase()  [sniper filter + truncation guard]
   │           │     └── _run_tactical_phase()
-  │           │           ├── katana
+  │           │           ├── katana          [-timeout 15 -depth 2]
   │           │           ├── js_hunter
-  │           │           ├── nuclei
-  │           │           └── FalsePositiveKiller + IntelMiner
+  │           │           ├── nuclei          [-duc -severity crit/high/med -c 25 -timeout 5]
+  │           │           └── FalsePositiveKiller + _filter_and_validate_findings()
   │           ├── _notify_and_report()        [NotificationDispatcher + BugBountyReporter]
   │           └── ReconDiff.save_baseline()
   └── WatchdogLoop (--watchdog)
 
-core/ (12 módulos)
+core/ (12 módulos, ~2750 linhas total)
   config.py    — constantes, timeouts, rate limiter, dedup, validators
-  ai.py        — AIClient (OpenRouter) + IntelMiner
+  ai.py        — AIClient (OpenRouter)
   storage.py   — ReconDiff (baseline diff) + CheckpointManager
   export.py    — ExportFormatter (CSV/XLSX/XML) + run_dry_run
-  ui.py        — terminal UI, live view, threading.RLock
-  filter.py    — FalsePositiveKiller (6 filtros)
-  scanner.py   — MissionRunner + ProOrchestrator
+  ui.py        — terminal UI, scroll region, live view, _stdout_lock, snapshots
+  filter.py    — FalsePositiveKiller (6 filtros: WAF, placeholder, Micro, etc.)
+  scanner.py   — MissionRunner + ProOrchestrator + _run_with_progress
   notifier.py  — NotificationDispatcher (Telegram/Discord)
   reporter.py  — BugBountyReporter (Markdown reports)
   watchdog.py  — loop 24/7 autônomo
   updater.py   — ToolUpdater (PDTM + nuclei-templates)
   __init__.py
 
-recon/ (4 módulos)
-  engines.py        — run_subfinder, run_dnsx, run_uncover, run_httpx, run_katana, run_nuclei
+recon/ (4 módulos, ~540 linhas total)
+  engines.py        — run_subfinder/dnsx/uncover/httpx/katana/nuclei/js_hunter
+                      run_cmd captura stderr em temp file para debug
   js_hunter.py      — JSHunter (extração real de secrets de JS)
   platforms.py      — H1Platform, BCPlatform, ITigriti, PlatformManager
   tool_discovery.py — find_tool() com cache, busca em ~/.pdtm/go/bin + ~/go/bin + PATH
@@ -64,9 +65,16 @@ recon/ (4 módulos)
 
 ## 🧪 TESTES
 ```bash
-python3 -m pytest tests/test_hunt3r.py -v  # 36 testes, 36 PASS
+python3 -m pytest tests/ -v  # 52 testes, 52 PASS (36 unit + 16 integration)
 ```
-Cobre: config, storage, filter, export, ai, notifier, reporter, dry-run, imports.
+Cobre: config, storage, filter, export, ai, notifier, reporter, dry-run, imports, scanner helpers.
+
+## ⚠️ COMPORTAMENTOS ESPERADOS (NÃO SÃO BUGS)
+
+- **FP Titanium no startup do Watchdog**: Normal — filtro roda sobre dados em cache da sessão anterior.
+- **Nuclei 0 findings**: Normal em alvos sem vulnerabilidades conhecidas. Confirme com `-severity` adequada.
+- **Nuclei timeout em alvos grandes (400+ live)**: Aumentar `TOOL_TIMEOUTS["nuclei"]` em `core/config.py` se necessário.
+- **Templates update failed no startup**: Normal se não há git ou acesso à internet; scan continua com templates existentes.
 
 ## 📋 CLI
 ```bash
