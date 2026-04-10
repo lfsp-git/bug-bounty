@@ -1,5 +1,43 @@
 # Hunt3r Changelog
 
+## v1.0-EXCALIBUR — Session 4 Stability Checkpoint — `e1b0285`
+
+### Smart 1h Cache (Recon Phase)
+- `_is_cache_valid(filepath)` — checks file exists, non-empty, mtime < 3600s
+- `_tool_cached(name, key, file)` — new status `"cached"`, renders **cyan** full bar in live view
+- `_run_recon_phase`: Subfinder, DNSX, Uncover, HTTPX serve from cache when valid (<1h)
+- `_run_tactical_phase`: Katana uses cache; **JS Hunter + Nuclei always run fresh** (by design)
+
+### Auto-Cleanup
+- `_auto_cleanup(target_dir)` called at scan start
+- Removes stale recon files (>1h) for the current target
+- Removes old snapshots from `logs/snapshots/` (>1h)
+- Cache and cleanup share the same 3600s TTL → perfectly synchronized
+
+### Nuclei TypeError Fix
+- `_nuclei_progress_callback`: replaced fragile `float(str(val or 0))` with `_to_int`/`_to_float` helpers
+  that catch `TypeError` and `ValueError` — handles any non-numeric value Nuclei may emit
+- `_nuclei_extra_stats`: added `isinstance(total, (int, float))` guard as second safety net
+- Root cause: Nuclei `-stats -sj` output may contain strings like `"N/A"` for not-yet-known fields
+- Effect: spinner thread no longer crashes; Nuclei runs to completion
+
+### Live View Order Fix
+- `_live_view_data` and `_TOOL_COUNT_KEYS` reordered: Katana before JS Hunter
+- Matches actual pipeline execution order: Subfinder → DNSX → Uncover → HTTPX → Katana → JS Hunter → Nuclei
+
+### FP TITANIUM Snapshot Noise Fix
+- `Colors.ERROR → Colors.WARNING` on "Eliminados N FPs" log
+- `ui_log` only auto-snapshots on `Colors.ERROR` — watchdog startup no longer floods `logs/snapshots/`
+
+### Terminal Resize Fix (SIGWINCH)
+- `_sigwinch_handler` now clears last 3 lines of scroll region on resize (erases stale wrapped spinner text)
+- `ui_update_status` truncates detail string to terminal width (prevents line wrap on narrow terminals)
+
+### Tests
+- **52 tests, 52 PASS** maintained across all changes
+
+---
+
 ## v1.0-EXCALIBUR — Session 3 Hardening (current) — `2d00398`+
 
 ### CTRL+C / Graceful Shutdown
