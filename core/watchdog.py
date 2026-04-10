@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import shlex
 import threading
+import queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from core.config import to_set
@@ -40,6 +41,9 @@ TARGET_BLACKLIST = ['ui', 'spotify', 'gitlab', 'coinbase']
 
 _worker_slot_lock = threading.Lock()
 _worker_slot_idx = 0
+_worker_slot_queue: "queue.Queue[str]" = queue.Queue()
+for _wid in _WORKER_SLOTS:
+    _worker_slot_queue.put(_wid)
 
 def _acquire_worker_slot() -> str:
     global _worker_slot_idx
@@ -228,8 +232,9 @@ def _record_scan_result(handle, has_changes):
             f.write(f"{h_key},{timestamp},{changed}\n")
 
 def _scan_target_parallel_wrapper(args):
-    orch, target, idx, total, worker_id = args
+    orch, target, idx, total = args
     handle = target.get('handle', 'unknown')
+    worker_id = _worker_slot_queue.get()
     set_worker_context(worker_id)
 
     try:
@@ -250,6 +255,9 @@ def _scan_target_parallel_wrapper(args):
         ui_log("ERR", f"[{worker_id}] Erro em {target.get('original_handle', 'unknown')}: {e}", Colors.ERROR)
         ui_snapshot("worker_error", f"[{worker_id}] {target.get('original_handle','')}: {e}")
         return {'success': False, 'handle': handle, 'reason': str(e)}
+    finally:
+        set_worker_context("W0")
+        _worker_slot_queue.put(worker_id)
 
 def run_watchdog():
     import core.scanner as scanner_module
@@ -275,8 +283,7 @@ def run_watchdog():
             tasks = []
             for idx, target in enumerate(wildcards, 1):
                 orch = ProOrchestrator(IntelMiner(AIClient()))
-                worker_id = _WORKER_SLOTS[(idx - 1) % len(_WORKER_SLOTS)]
-                tasks.append((orch, target, idx, total, worker_id))
+                tasks.append((orch, target, idx, total))
 
             with ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
                 futures = [executor.submit(_scan_target_parallel_wrapper, t) for t in tasks]

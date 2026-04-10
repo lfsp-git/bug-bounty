@@ -300,7 +300,17 @@ def ui_snapshot(label: str = "manual", context: str = ""):
 def ui_log(module: str, message: str, color=None):
     """Log a message → activity log + file. In single mode also prints."""
     worker_id = _get_current_worker()
-    _activity_push(worker_id, module, message, "white")
+    msg_u = str(module).upper()
+    level_color = "white"
+    if any(k in msg_u for k in ("ERR", "ERROR", "ABORTADO")):
+        level_color = "red"
+    elif any(k in msg_u for k in ("WARNING", "WARN", "ANOMALIA", "GUARD")):
+        level_color = "yellow"
+    elif any(k in msg_u for k in ("RESULTADO", "SUCCESS", "REPORT")):
+        level_color = "green"
+    elif any(k in msg_u for k in ("WATCHDOG", "MISSION", "MODE")):
+        level_color = "cyan"
+    _activity_push(worker_id, module, message, level_color)
     if not _WATCHDOG_MODE:
         icon = ICONS.get(module.upper(), ICONS.get(module, "●"))
         ts = datetime.now().strftime("%H:%M:%S")
@@ -576,6 +586,14 @@ def _render_banner() -> Panel:
     with _stats_lock:
         scanned = _total_scanned
         cycle = _cycle_count
+    with _workers_lock:
+        running = sum(1 for w in _workers.values() if w.get('status') == 'running')
+        done = sum(1 for w in _workers.values() if w.get('status') == 'done')
+        errors = sum(
+            1
+            for w in _workers.values()
+            if any(t.get('status') == 'error' for t in w.get('tools', {}).values())
+        )
     title_text = Text(justify="center")
     title_text.append("HUNT3R", style="bold cyan")
     title_text.append(" v1.0-EXCALIBUR  ◆  ", style="dim")
@@ -586,7 +604,10 @@ def _render_banner() -> Panel:
     stats_text.append(f"🕒 {now_str}  ", style="white")
     stats_text.append(f"CYCLE {cycle:02d}  ", style="bold cyan")
     stats_text.append(f"Runtime {h:02d}h{m:02d}m{s:02d}s  ", style="dim")
-    stats_text.append(f"{scanned} targets scanned", style="dim white")
+    stats_text.append(f"{scanned} targets scanned  ", style="dim white")
+    stats_text.append(f"RUN:{running} ", style="yellow")
+    stats_text.append(f"DONE:{done} ", style="green")
+    stats_text.append(f"ERR:{errors}", style="bold red" if errors else "dim white")
     return Panel(
         Group(Align(title_text, "center"), Align(stats_text, "center")),
         border_style="cyan", box=ROUNDED, padding=(0, 1))
