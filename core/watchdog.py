@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Importe apenas o necessário
 from core.ui import ui_log, Colors, ui_clear_and_banner, ui_set_mission_meta
 from core.config import TOOL_TIMEOUTS  # Centralized timeouts
+from core.bounty_scorer import BountyScorer  # Bounty program prioritization
 
 # Configurações
 GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
@@ -168,6 +169,40 @@ def _process_raw_to_targets(raw_list):
     
     return valid_targets[:MAX_TARGETS_PER_CYCLE]
 
+def _prioritize_targets_by_bounty_potential(targets):
+    """
+    Sort targets by bounty program potential using BountyScorer.
+    Prioritizes newly added programs over established ones.
+    """
+    scored_targets = []
+    now = time.time()
+    
+    for target in targets:
+        # Extract metadata for scoring
+        program_data = {
+            'handle': target.get('original_handle', target.get('handle', 'unknown')),
+            'platform': 'unknown',
+            'created_at': now,
+            'bounty_range': (100, 1000),
+            'scope_size': 100,
+        }
+        
+        score, breakdown = BountyScorer.score_program(program_data)
+        scored_targets.append((target, score, breakdown))
+    
+    # Sort by score descending
+    scored_targets.sort(key=lambda x: x[1], reverse=True)
+    
+    # Log top priorities
+    if scored_targets:
+        top_3 = scored_targets[:3]
+        ui_log("BOUNTY", "Top targets (by program potential):", Colors.INFO)
+        for target, score, breakdown in top_3:
+            handle = target.get('original_handle', 'unknown')
+            ui_log("BOUNTY", f"  {handle}: {score:.0f}/100", Colors.DIM)
+    
+    return [t[0] for t in scored_targets]
+
 def _has_changes_since_last_scan(handle):
     """Verifica se houve mudanças desde a última varredura."""
     # Verifica se há baseline para esse handle
@@ -240,11 +275,15 @@ def _record_scan_result(handle, has_changes):
 def run_watchdog():
     ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo.", Colors.SUCCESS)
     while True:
-        ui_clear_and_banner()  # Chama o novo banner aqui
+        ui_clear_and_banner()
         ts = datetime.now().strftime('%H:%M')
         ui_log("WATCHDOG", f"=== CICLO {ts} ===", Colors.BOLD)
         wildcards = _fetch_global_wildcards()
         if wildcards:
+            # Prioritize targets by bounty program potential (recency + budget)
+            wildcards = _prioritize_targets_by_bounty_potential(wildcards)
+            ui_log("WATCHDOG", f"Processing {len(wildcards)} targets in priority order", Colors.DIM)
+            
             from core.scanner import ProOrchestrator
             from core.ai import IntelMiner
             from core.ai import AIClient
