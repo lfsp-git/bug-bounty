@@ -212,7 +212,7 @@ class PlatformManager:
 
 def load_custom_targets() -> List[Dict]:
     """Carrega alvos do alvos.txt usando parsing seguro de URL."""
-    from config.validators import validate_and_extract_domain
+    from core.config import validate_and_extract_domain
     from core.ui import ui_log, Colors
     
     t = []

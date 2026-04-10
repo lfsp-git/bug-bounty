@@ -1,5 +1,9 @@
+from __future__ import annotations
 import os, sys, time, threading, math, json, logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.ai import IntelMiner
 
 # UI Imports
 from core.ui import (
@@ -410,6 +414,13 @@ class ProOrchestrator:
     """
     def __init__(self, config):
         self.config = config
+        self.intel: IntelMiner | None = None
+
+    def _ensure_intel(self):
+        """Lazily initialize IntelMiner (requires AIClient)."""
+        if self.intel is None:
+            from core.ai import AIClient, IntelMiner
+            self.intel = IntelMiner(AIClient())
 
     def start_mission(self, *args, stats_pipe=None):
         """Start a mission.

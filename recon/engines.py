@@ -144,8 +144,11 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50,
                                 text=True, bufsize=1)
 
         def _read_stderr():
+            stderr = proc.stderr
+            if stderr is None:
+                return
             try:
-                for line in proc.stderr:
+                for line in stderr:
                     line = line.strip()
                     if not line:
                         continue
@@ -159,7 +162,7 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50,
                 pass
             finally:
                 try:
-                    proc.stderr.close()
+                    stderr.close()
                 except OSError:
                     pass
 
@@ -211,11 +214,11 @@ def run_js_hunter(katana_file, output_file):
                 try:
                     from recon.js_hunter import JSHunter
                     hunter = JSHunter()
-                    extracted = hunter.extract(line)
+                    extracted = hunter.scan_url(line)
                     for secret in extracted:
                         secrets_found.append({
                             'type': secret.get('type', 'Unknown'),
-                            'value': secret.get('secret', ''),
+                            'value': secret.get('value', ''),
                             'url': line,
                             'confidence': secret.get('confidence', 0.9)
                         })

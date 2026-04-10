@@ -3,6 +3,7 @@ Hunt3r v1.0-EXCALIBUR - Bug Bounty Report Generator
 Generates structured Markdown reports from scan findings,
 ready for submission to H1, BugCrowd, and Intigriti.
 """
+from __future__ import annotations
 
 import json
 import os
@@ -53,8 +54,8 @@ class BugBountyReporter:
 
     def load_js_secrets(self, js_secrets_path: str) -> List[str]:
         """Load raw lines from JS secrets file."""
-        secrets = []
-        if not os.path.exists(js_secrets_path):
+        secrets: List[str] = []
+        if not js_secrets_path or not os.path.exists(js_secrets_path):
             return secrets
         try:
             with open(js_secrets_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -66,7 +67,7 @@ class BugBountyReporter:
     def generate(
         self,
         findings_path: str,
-        js_secrets_path: str = None,
+        js_secrets_path: str | None = None,
         subdomains_count: int = 0,
         endpoints_count: int = 0,
     ) -> str:

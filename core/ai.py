@@ -127,6 +127,7 @@ class IntelMiner:
         """Adaptive subdomain limit based on available RAM."""
         try:
             if _HAS_PSUTIL:
+                import psutil
                 mb = psutil.virtual_memory().available // (1024 * 1024)
             else:
                 with open("/proc/meminfo", "r") as f:
