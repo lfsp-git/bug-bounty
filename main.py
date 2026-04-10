@@ -1,69 +1,70 @@
 #!/usr/bin/env python3
-"""HUNT3R v2.2 - State Machine UI"""
+"""HUNT3R v1.0-EXCALIBUR — Autonomous Bug Bounty Hunter"""
 import sys
 import os
 import argparse
+import glob
+import json
 import logging
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core.ui_manager import ui_banner, ui_clear, ui_main_menu, ui_log, Colors
-from core.ai_client import AIClient
-from core.intelligence import IntelMiner
-from core.orchestrator import ProOrchestrator
+from core.ui import ui_banner, ui_clear, ui_main_menu, ui_log, Colors
+from core.ui import ui_platform_selection_menu, ui_target_selection_list
+from core.ui import ui_manual_target_input, ui_custom_targets_list
+from core.ai import AIClient, IntelMiner, select_model_interactive
+from core.scanner import ProOrchestrator
 from core.updater import ToolUpdater
-from core.constants import AUTO_UPDATE_ON_START
+from core.config import AUTO_UPDATE_ON_START
 from recon.platforms import PlatformManager, load_custom_targets
 
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
-def _load_env():
-    """Load environment variables from .env file safely."""
-    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+def _load_env() -> None:
+    """Load .env file and validate required tokens."""
+    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if os.path.exists(env_file):
         try:
-            with open(env_file, 'r', encoding='utf-8') as f:
+            with open(env_file, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith("#") or "=" not in line:
                         continue
-                    if '=' not in line:
-                        continue
-                    key, value = line.split('=', 1)
-                    key = key.strip()
-                    value = value.replace('\r', '').strip().strip('"').strip("'")
-                    os.environ.setdefault(key, value)
-        except Exception as e:
+                    key, _, value = line.partition("=")
+                    os.environ.setdefault(
+                        key.strip(),
+                        value.replace("\r", "").strip().strip('"').strip("'"),
+                    )
+        except OSError as e:
             logger.error(f"Failed to load .env: {e}")
-    
-    # Validate required platform tokens
-    required_tokens = ['H1_TOKEN', 'BC_TOKEN', 'IT_TOKEN']
-    missing = [tok for tok in required_tokens if not os.getenv(tok)]
+
+    missing = [t for t in ("H1_TOKEN", "BC_TOKEN", "IT_TOKEN") if not os.getenv(t)]
     if missing:
-        logger.warning(f"Missing platform tokens: {', '.join(missing)}. API calls will fail silently.")
-    
-    # Validate H1_USER is set if H1_TOKEN exists
-    if os.getenv('H1_TOKEN') and not os.getenv('H1_USER'):
-        logger.warning("H1_TOKEN set but H1_USER missing. HackerOne API requires both.")
+        logger.warning(f"Missing platform tokens: {', '.join(missing)}")
+    if os.getenv("H1_TOKEN") and not os.getenv("H1_USER"):
+        logger.warning("H1_TOKEN set but H1_USER missing")
+
+    # Detect placeholder values that were never replaced
+    placeholder_markers = ("your_", "xxxxx", "changeme", "token_here", "key_here")
+    for key in ("H1_TOKEN", "BC_TOKEN", "IT_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"):
+        val = os.getenv(key, "")
+        if val and any(m in val.lower() for m in placeholder_markers):
+            logger.warning(f"Env var {key} looks like a placeholder — did you fill in .env?")
 
 
-def init_seq():
-    """Initialize tool updates."""
+def init_seq() -> None:
     ui_log("SYSTEM", "Verificando ferramentas...", Colors.PRIMARY)
     try:
-        u = ToolUpdater()
-        u.update_all()
+        ToolUpdater().update_all()
         ui_log("SYSTEM", "Pronto.", Colors.SUCCESS)
     except Exception as e:
         logger.error(f"Tool update failed: {e}")
         ui_log("UPDATER ERR", str(e), Colors.ERROR)
 
 
-def init_ai():
-    """Setup da IA: verifica se tem modelo selecionado ou pede pro usuario."""
-    from core.ai_client import select_model_interactive
+def init_ai() -> AIClient:
     client = AIClient()
     if not client.api_key:
         ui_log("AI", "OPENROUTER_API_KEY nao configurada. IA desativada.", Colors.WARNING)
@@ -78,9 +79,10 @@ def init_ai():
         ui_log("AI", "IA ficara offline ate selecionar um modelo.", Colors.DIM)
     return client
 
-def state_platforms(orch):
-    ui_clear(); ui_banner()
 
+def state_platforms(orch: ProOrchestrator) -> None:
+    ui_clear()
+    ui_banner()
     pm = PlatformManager()
     avail = pm.get_available_platforms()
     if not avail:
@@ -91,11 +93,10 @@ def state_platforms(orch):
             pass
         return
 
-    from core.ui_manager import ui_platform_selection_menu, ui_target_selection_list
     sel = ui_platform_selection_menu(avail)
-    if not sel: return
+    if not sel:
+        return
 
-    # CACHED FIRST: avoid expensive H1 API fetch if cache < 1h
     cached = orch.intel.load_cached_programs()
     if cached:
         ui_log("H1 CACHE", f"{len(cached)} programas carregados do cache.", Colors.SUCCESS)
@@ -111,40 +112,44 @@ def state_platforms(orch):
             return
         ranked = orch.intel.rank_programs_for_list(progs)
 
-    # UX PERFEITA: A tabela desce suavemente logo abaixo do log de sucesso
     print()
     ui_target_selection_list(ranked)
-
     try:
         idx = int(input(f"  {Colors.WARNING}ID do Alvo:{Colors.RESET} ")) - 1
         if 0 <= idx < len(ranked):
             t = ranked[idx]
-            ui_clear(); ui_banner()
-            orch.start_mission(t['handle'], t['domains'], f"recon/db/{t['handle']}", t['score'])
+            ui_clear()
+            ui_banner()
+            orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
             try:
                 input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
             except EOFError:
                 pass
-    except (ValueError, KeyboardInterrupt): pass
+    except (ValueError, KeyboardInterrupt):
+        pass
 
-def state_manual(orch):
-    ui_clear(); ui_banner()
-    from core.ui_manager import ui_manual_target_input
+
+def state_manual(orch: ProOrchestrator) -> None:
+    ui_clear()
+    ui_banner()
     t = ui_manual_target_input()
-    if not t: return
+    if not t:
+        return
     try:
-        scan_input = input(f"\n  {Colors.WARNING}Scan {t['domains'][0]}? (s/n): {Colors.RESET}")
+        ans = input(f"\n  {Colors.WARNING}Scan {t['domains'][0]}? (s/n): {Colors.RESET}")
     except EOFError:
-        scan_input = ''
-    if scan_input.lower() == 's':
-        orch.start_mission(t['handle'], t['domains'], f"recon/db/{t['handle']}", t['score'])
+        ans = ""
+    if ans.lower() == "s":
+        orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
         try:
             input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
         except EOFError:
             pass
 
-def state_list(orch):
-    ui_clear(); ui_banner()
+
+def state_list(orch: ProOrchestrator) -> None:
+    ui_clear()
+    ui_banner()
     tgts = load_custom_targets()
     if not tgts:
         ui_log("AVISO", "alvos.txt vazio.", Colors.WARNING)
@@ -153,29 +158,47 @@ def state_list(orch):
         except EOFError:
             pass
         return
-    from core.ui_manager import ui_custom_targets_list
     sel = ui_custom_targets_list(tgts)
-    if not sel: return
+    if not sel:
+        return
     try:
-        scan_input = input(f"\n  {Colors.WARNING}Scan {sel['domains'][0]}? (s/n): {Colors.RESET}")
+        ans = input(f"\n  {Colors.WARNING}Scan {sel['domains'][0]}? (s/n): {Colors.RESET}")
     except EOFError:
-        scan_input = ''
-    if scan_input.lower() == 's':
-        orch.start_mission(sel['handle'], sel['domains'], f"recon/db/{sel['handle']}", sel['score'])
+        ans = ""
+    if ans.lower() == "s":
+        orch.start_mission(sel["handle"], sel["domains"], f"recon/db/{sel['handle']}", sel["score"])
         try:
             input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
         except EOFError:
             pass
 
-def main():
+
+def _load_all_findings() -> list:
+    """Load all JSONL findings from recon/baselines/."""
+    findings = []
+    for path in glob.glob("recon/baselines/*_findings.jsonl"):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            findings.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
+        except OSError:
+            pass
+    return findings
+
+
+def main() -> None:
     _load_env()
 
-    # CLI arguments
-    parser = argparse.ArgumentParser(description="HUNT3R - Autonomous Recon")
-    parser.add_argument("--watchdog", action="store_true", help="Modo contínuo: Top 15 Wildcards, 24/7")
-    parser.add_argument("--dry-run", action="store_true", help="Preview scan targets without executing tools")
-    parser.add_argument("--resume", type=str, help="Resume scan from checkpoint (mission_id)")
-    parser.add_argument("--export", type=str, choices=['csv', 'xlsx', 'xml'], help="Export findings format")
+    parser = argparse.ArgumentParser(description="HUNT3R v1.0-EXCALIBUR — Autonomous Bug Bounty Hunter")
+    parser.add_argument("--watchdog", action="store_true", help="24/7 autonomous watchdog mode")
+    parser.add_argument("--dry-run", action="store_true", help="Preview targets without executing tools")
+    parser.add_argument("--resume", type=str, metavar="MISSION_ID", help="Resume from checkpoint")
+    parser.add_argument("--export", type=str, choices=["csv", "xlsx", "xml"], help="Export all findings")
     args = parser.parse_args()
 
     if args.watchdog:
@@ -183,70 +206,59 @@ def main():
         from core.watchdog import run_watchdog
         run_watchdog()
         return
-    
+
     if args.dry_run:
-        ui_clear(); ui_banner()
-        ui_log("DRY-RUN", "Starting preview mode (no tools will execute)...", Colors.WARNING)
-        # Dry run mode: load targets, show what would be scanned, exit
-        from core.dry_run import run_dry_run
+        ui_clear()
+        ui_banner()
+        ui_log("DRY-RUN", "Preview mode — no tools will execute", Colors.WARNING)
+        from core.export import run_dry_run
         run_dry_run()
         return
-    
+
     if args.resume:
-        ui_clear(); ui_banner()
-        ui_log("RESUME", f"Resuming mission from checkpoint: {args.resume}", Colors.WARNING)
-        from core.checkpoint import resume_mission
+        ui_clear()
+        ui_banner()
+        ui_log("RESUME", f"Resuming: {args.resume}", Colors.WARNING)
+        from core.storage import resume_mission
         resume_mission(args.resume)
         return
 
     if args.export:
-        ui_clear(); ui_banner()
-        ui_log("EXPORT", f"Exporting findings as {args.export.upper()}...", Colors.WARNING)
-        import glob
-        from core.exporter import ExportFormatter
-        all_findings = []
-        for f in glob.glob("recon/baselines/*_findings.jsonl"):
-            import json as _json
-            try:
-                with open(f, 'r', encoding='utf-8') as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if line:
-                            try:
-                                all_findings.append(_json.loads(line))
-                            except _json.JSONDecodeError:
-                                pass
-            except OSError:
-                pass
-        if not all_findings:
-            ui_log("EXPORT", "No findings found in recon/baselines/. Run a scan first.", Colors.WARNING)
+        ui_clear()
+        ui_banner()
+        ui_log("EXPORT", f"Exporting as {args.export.upper()}...", Colors.WARNING)
+        from core.export import ExportFormatter
+        findings = _load_all_findings()
+        if not findings:
+            ui_log("EXPORT", "No findings in recon/baselines/. Run a scan first.", Colors.WARNING)
         else:
-            fmt = ExportFormatter(all_findings)
-            path = fmt.export(args.export)
-            ui_log("EXPORT", f"Exported {len(all_findings)} findings → {path}", Colors.SUCCESS)
+            path = ExportFormatter().export(findings, args.export)
+            ui_log("EXPORT", f"Exported {len(findings)} findings → {path}", Colors.SUCCESS)
         return
 
-    # TELA INICIAL: Renderiza o estado Menu
-    ui_clear(); ui_banner()
+    # Interactive menu
+    ui_clear()
+    ui_banner()
     init_seq()
     ai = init_ai()
 
     if not ai.api_key or not ai.selected_model:
-        ui_log("AVISO", "IA indisponivel. Analise de vulnerabilidades sera pulada.", Colors.DIM)
+        ui_log("AVISO", "IA indisponivel. Validacao de vulnerabilidades sera pulada.", Colors.DIM)
+
     orch = ProOrchestrator(IntelMiner(ai))
 
     while True:
-        ui_clear(); ui_banner()
+        ui_clear()
+        ui_banner()
         ch = ui_main_menu()
-        # If no input (e.g., non-interactive), exit gracefully
         if not ch:
-            ui_log("SAINDO", "Sem entrada do usuário. Encerrando.", Colors.WARNING)
+            ui_log("SAINDO", "Sem entrada. Encerrando.", Colors.WARNING)
             break
-        # Normalize input to integer if possible
         try:
             choice = int(ch)
         except ValueError:
-            choice = None
+            choice = -1
+
         if choice == 0:
             ui_log("SAINDO", "Ate logo.", Colors.WARNING)
             break
@@ -257,10 +269,13 @@ def main():
         elif choice == 3:
             state_list(orch)
         else:
-            ui_log("ERRO", "Invalido.", Colors.ERROR)
+            ui_log("ERRO", "Opcao invalida.", Colors.ERROR)
             try:
                 input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
             except EOFError:
                 pass
 
-if __name__ == "__main__": main()
+
+if __name__ == "__main__":
+    main()
+
