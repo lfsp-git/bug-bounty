@@ -236,6 +236,33 @@ def _auto_cleanup(target_dir: str):
                 pass
 
 
+def _safe_read_lines(filepath: str) -> List[str]:
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as fh:
+            return [line.strip() for line in fh if line.strip()]
+    except OSError:
+        return []
+
+
+def _safe_read_jsonl(filepath: str) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                    if isinstance(payload, dict):
+                        items.append(payload)
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return []
+    return items
+
+
 class MissionRunner:
     """Handles a single mission lifecycle: prepare, run vulnerability phase, and finalize."""
     def __init__(self, target_data, stats_pipe=None, config=None, custom_template_paths=None):
@@ -244,8 +271,18 @@ class MissionRunner:
         self.config = config or {}
         self.custom_template_paths = custom_template_paths or []
 
+    def _build_phase_result(self, phase: str) -> Dict[str, Any]:
+        return {
+            "phase": phase,
+            "ok": True,
+            "errors": [],
+            "counts": {},
+            "paths": {},
+        }
+
     def _run_recon_phase(self, paths, domains):
         """Executa a fase de reconhecimento: subfinder, dnsx, uncover, httpx."""
+        phase_result = self._build_phase_result("recon")
         dom_file = paths["dom"]
         os.makedirs(os.path.dirname(dom_file), exist_ok=True)
         with open(dom_file, 'w') as f:
@@ -263,7 +300,12 @@ class MissionRunner:
             limiter.wait_and_record(self.target.get('handle', 'unknown'))
             _tool_start("Subfinder", input_count=count_lines(dom_file))
             ok = _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
-            _tool_done("Subfinder", "subs", sub_file) if ok else _tool_error("Subfinder")
+            if ok:
+                _tool_done("Subfinder", "subs", sub_file)
+            else:
+                _tool_error("Subfinder")
+                phase_result["ok"] = False
+                phase_result["errors"].append("Subfinder failed")
 
         # DNSX
         live_file = paths["live"]
@@ -275,7 +317,12 @@ class MissionRunner:
             limiter.wait_and_record(self.target.get('handle', 'unknown'))
             _tool_start("DNSX", input_count=count_lines(sub_file))
             ok = _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
-            _tool_done("DNSX", "live", live_file) if ok else _tool_error("DNSX")
+            if ok:
+                _tool_done("DNSX", "live", live_file)
+            else:
+                _tool_error("DNSX")
+                phase_result["ok"] = False
+                phase_result["errors"].append("DNSX failed")
 
         # Uncover
         uncover_file = paths["sub"] + ".uncover"
@@ -286,7 +333,12 @@ class MissionRunner:
             limiter.wait_and_record(self.target.get('handle', 'unknown'))
             _tool_start("Uncover")
             ok = _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
-            _tool_done("Uncover", "takeovers", uncover_file) if ok else _tool_error("Uncover")
+            if ok:
+                _tool_done("Uncover", "takeovers", uncover_file)
+            else:
+                _tool_error("Uncover")
+                phase_result["ok"] = False
+                phase_result["errors"].append("Uncover failed")
 
         # HTTPX
         httpx_file = paths["live"] + ".httpx"
@@ -297,7 +349,12 @@ class MissionRunner:
             limiter.wait_and_record(self.target.get('handle', 'unknown'))
             _tool_start("HTTPX", input_count=count_lines(live_file))
             ok = _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
-            _tool_done("HTTPX", "endpoints", httpx_file) if ok else _tool_error("HTTPX")
+            if ok:
+                _tool_done("HTTPX", "endpoints", httpx_file)
+            else:
+                _tool_error("HTTPX")
+                phase_result["ok"] = False
+                phase_result["errors"].append("HTTPX failed")
 
         # Calcular não resolvidos
         if os.path.exists(sub_file) and os.path.exists(live_file):
@@ -308,13 +365,33 @@ class MissionRunner:
             with open(unv_file, 'w') as f_unv:
                 for u in unv:
                     f_unv.write(u + '\n')
+        phase_result["counts"] = {
+            "domains": count_lines(dom_file),
+            "subdomains": count_lines(sub_file),
+            "alive": count_lines(live_file),
+            "takeovers": count_lines(uncover_file),
+            "httpx_urls": count_lines(httpx_file),
+            "unresolved": count_lines(unv_file),
+        }
+        phase_result["paths"] = {
+            "dom": dom_file,
+            "sub": sub_file,
+            "live": live_file,
+            "unv": unv_file,
+            "uncover": uncover_file,
+            "httpx": httpx_file,
+        }
+        return phase_result
 
     def _run_tactical_phase(self, paths):
         """Executa a fase tática: Katana, JS Hunter, Nuclei."""
+        phase_result = self._build_phase_result("tactical")
         live_file = paths["live"]
         if not os.path.exists(live_file) or os.path.getsize(live_file) == 0:
             ui_log("INFO", "Nenhum subdomínio vivo. Pulando fase tática.", Colors.WARNING)
-            return
+            phase_result["ok"] = False
+            phase_result["errors"].append("No live subdomains for tactical phase")
+            return phase_result
         
         limiter = get_rate_limiter(REQUESTS_PER_SECOND)
         
@@ -332,14 +409,24 @@ class MissionRunner:
             limiter.wait_and_record(self.target.get('handle', 'unknown'))
             _tool_start("Katana", input_count=count_lines(recon_input))
             ok = _run_with_progress("Katana", lambda: run_katana_surgical(recon_input, katana_file, rate_limit=RATE_LIMIT))
-            _tool_done("Katana", "crawled", katana_file) if ok else _tool_error("Katana")
+            if ok:
+                _tool_done("Katana", "crawled", katana_file)
+            else:
+                _tool_error("Katana")
+                phase_result["ok"] = False
+                phase_result["errors"].append("Katana failed")
         
         # JS Hunter: extrai segredos de arquivos JavaScript
         js_secrets_file = paths["live"] + ".js_secrets"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
         _tool_start("JS Hunter")
         ok = _run_with_progress("JS Hunter", lambda: run_js_hunter(katana_file, js_secrets_file))
-        _tool_done("JS Hunter", "secrets", js_secrets_file) if ok else _tool_error("JS Hunter")
+        if ok:
+            _tool_done("JS Hunter", "secrets", js_secrets_file)
+        else:
+            _tool_error("JS Hunter")
+            phase_result["ok"] = False
+            phase_result["errors"].append("JS Hunter failed")
         
         # Smart Nuclei Tag Detection: Extract tech from Katana/HTTPX and select appropriate tags
         nuclei_tags = self._get_smart_nuclei_tags(recon_input, katana_file)
@@ -353,17 +440,38 @@ class MissionRunner:
             rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback,
             custom_templates=self.custom_template_paths),
             extra_stats_fn=_nuclei_extra_stats)
-        _tool_done("Nuclei", "vulns", findings_file) if ok else _tool_error("Nuclei")
+        if ok:
+            _tool_done("Nuclei", "vulns", findings_file)
+        else:
+            _tool_error("Nuclei")
+            phase_result["ok"] = False
+            phase_result["errors"].append("Nuclei failed")
         
         # Consolidar filtragem e validação em um passo único
         if os.path.exists(findings_file):
             self._filter_and_validate_findings(findings_file)
+        phase_result["counts"] = {
+            "inputs": count_lines(recon_input),
+            "katana_urls": count_lines(katana_file),
+            "js_secrets": count_lines(js_secrets_file),
+            "findings": _count_findings(findings_file),
+        }
+        phase_result["paths"] = {
+            "input": recon_input,
+            "katana": katana_file,
+            "js_secrets": js_secrets_file,
+            "findings": findings_file,
+        }
+        return phase_result
 
     def _run_vulnerability_phase(self, paths):
+        phase_result = self._build_phase_result("vulnerability")
         # Aplica filtro sniper
         ns = paths.get("live", "")
         if not os.path.exists(ns) or os.path.getsize(ns) == 0:
-            return
+            phase_result["ok"] = False
+            phase_result["errors"].append("No live file for vulnerability phase")
+            return phase_result
 
         ns_clean = f"{ns}_clean"
         apply_sniper_filter(ns, ns_clean)
@@ -381,7 +489,13 @@ class MissionRunner:
             ns = t_ns
 
         # Executa fase tática
-        self._run_tactical_phase(paths)
+        tactical = self._run_tactical_phase(paths)
+        phase_result["ok"] = tactical.get("ok", False)
+        phase_result["errors"] = tactical.get("errors", [])
+        phase_result["counts"] = tactical.get("counts", {})
+        phase_result["paths"] = tactical.get("paths", {})
+        phase_result["paths"]["sniper_input"] = ns
+        return phase_result
     
     def _filter_and_validate_findings(self, findings_file):
         """Single consolidation point: FP filtering + AI validation"""
@@ -409,47 +523,36 @@ class MissionRunner:
         
         ui_log("AI VALIDATION", "Validando vulnerabilidades críticas com IA...", Colors.INFO)
         
-        validated_findings = []
+        validated_findings: List[Dict[str, Any]] = []
         critical_keywords = ['critical', 'high', 'rce', 'sql', 'xss', 'xxe', 'misconfig', 'takeover']
         
         try:
-            with open(findings_file, 'r', encoding='utf-8', errors='ignore') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:  # Skip empty lines
-                        continue
-                    
-                    try:
-                        vuln = json.loads(line)
-                    except json.JSONDecodeError as e:
-                        logging.warning(f"Skipping malformed JSONL in {findings_file}: {e}")
-                        continue
-                    
-                    template_id = vuln.get('template-id', '').lower()
-                    host = vuln.get('host', '')
-                    
-                    # Only validate critical/high findings
-                    is_critical = any(keyword in template_id for keyword in critical_keywords)
-                    
-                    if is_critical:
-                        prompt = f"""Analyze: Is this a real vulnerability?
-                            
+            for vuln in _safe_read_jsonl(findings_file):
+                template_id = vuln.get('template-id', '').lower()
+                host = vuln.get('host', '')
+                
+                # Only validate critical/high findings
+                is_critical = any(keyword in template_id for keyword in critical_keywords)
+                
+                if is_critical:
+                    prompt = f"""Analyze: Is this a real vulnerability?
+                        
 Target: {host}
 Template: {template_id}
 Respond only: VALID or INVALID"""
-                        response = ai_client.complete(prompt, max_tokens=10)
-                        
-                        if 'VALID' in response.upper():
-                            validated_findings.append(line)
-                        else:
-                            ui_log("AI VALIDATION", f"Rejected: {host} ({template_id})", Colors.WARNING)
+                    response = ai_client.complete(prompt, max_tokens=10)
+                    
+                    if 'VALID' in response.upper():
+                        validated_findings.append(vuln)
                     else:
-                        validated_findings.append(line)
+                        ui_log("AI VALIDATION", f"Rejected: {host} ({template_id})", Colors.WARNING)
+                else:
+                    validated_findings.append(vuln)
             
             # Rewrite file with validated findings
             with open(findings_file, 'w', encoding='utf-8') as f:
                 for finding in validated_findings:
-                    f.write(finding + '\n')
+                    f.write(json.dumps(finding) + '\n')
             
             ui_log("AI VALIDATION", "Validation complete.", Colors.SUCCESS)
         except Exception as e:
@@ -464,27 +567,7 @@ Respond only: VALID or INVALID"""
         """
         try:
             tech_stack = set()
-            urls = []
-            
-            # Extract URLs from HTTPX
-            if os.path.exists(httpx_file) and os.path.getsize(httpx_file) > 0:
-                try:
-                    with open(httpx_file, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                urls.append(line.strip())
-                except (IOError, OSError):
-                    pass
-            
-            # Extract URLs from Katana output
-            if os.path.exists(katana_file) and os.path.getsize(katana_file) > 0:
-                try:
-                    with open(katana_file, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                urls.append(line.strip())
-                except (IOError, OSError):
-                    pass
+            urls = _safe_read_lines(httpx_file) + _safe_read_lines(katana_file)
             
             # Detect technology stack from URLs
             if urls:
@@ -550,8 +633,8 @@ Respond only: VALID or INVALID"""
         ui_mission_header(h, self.target.get('score', 0))
         ui_set_mission_meta(self.target.get('original_handle', h))
         try:
-            self._run_recon_phase(paths, self.target.get('domains', []))
-            self._run_vulnerability_phase(paths)
+            recon_result = self._run_recon_phase(paths, self.target.get('domains', []))
+            vuln_result = self._run_vulnerability_phase(paths)
         except KeyboardInterrupt:
             ui_log("MISSION", "Interrompido pelo usuario (CTRL+C)", Colors.WARNING)
             ui_mission_footer()
@@ -567,7 +650,16 @@ Respond only: VALID or INVALID"""
                 'endpoints': _live_view_data["HTTPX"]["endpoints"],
                 'js_secrets': _live_view_data["JS Hunter"]["secrets"],
                 'vulns': _live_view_data["Nuclei"]["vulns"],
+                'phase_results': {
+                    'recon': recon_result,
+                    'vulnerability': vuln_result,
+                },
             }
+        phase_errors = recon_result.get("errors", []) + vuln_result.get("errors", [])
+        results["errors"] = phase_errors
+        results["ok"] = not phase_errors
+        if phase_errors:
+            ui_log("MISSION", f"{len(phase_errors)} erro(s) de fase detectados.", Colors.WARNING)
         # Stop live view FIRST so its thread doesn't race with ui_scan_summary prints
         ui_mission_footer()
         ui_scan_summary(results)
@@ -629,4 +721,4 @@ class ProOrchestrator:
             raise TypeError("start_mission expects either (target_data_dict[, stats_pipe]) or (handle, domains, db_path, score[, stats_pipe])")
 
         runner = MissionRunner(target, stats_pipe, config=self.config, custom_template_paths=self.custom_template_paths)
-        runner.run()
+        return runner.run()
