@@ -12,7 +12,6 @@ recon/baselines
 config/selected_model.json
 .claude/
 .vscode/
-recon/custom_templates/payloadsallthethings/
 resume-*.cfg
 resume.cfg
 .aider*
