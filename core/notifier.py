@@ -9,7 +9,7 @@ import json
 import logging
 import requests
 from datetime import datetime
-from core.ui_manager import ui_log, Colors
+from core.ui import ui_log, Colors
 
 
 class NotifierConfig:

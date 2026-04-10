@@ -71,8 +71,9 @@ def run_httpx(input_file, output_file, rate_limit=100):
     run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-rate-limit", str(rate_limit)], "HTTPX", output_file)
 
 def run_katana_surgical(input_file, output_file, rate_limit=100):
-    """Função que estava faltando no import do Pylance"""
-    cmd = [find_tool("katana"), "-list", input_file, "-o", output_file, "-silent", f"-rate-limit={rate_limit}"]
+    """Crawling com URLs do HTTPX. -timeout limita por-request para evitar travamentos."""
+    cmd = [find_tool("katana"), "-list", input_file, "-o", output_file, "-silent",
+           f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2"]
     run_cmd(cmd, "Katana", output_file)
 
 def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=100):

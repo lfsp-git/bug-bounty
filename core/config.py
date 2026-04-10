@@ -64,7 +64,7 @@ TOOL_TIMEOUTS: dict = {
     "dnsx": 60,
     "uncover": 90,
     "httpx": 120,
-    "katana": 180,
+    "katana": 120,
     "js_hunter": 30,
     "nuclei": 300,
     "api_request": 15,

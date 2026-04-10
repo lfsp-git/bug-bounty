@@ -99,6 +99,23 @@ def _count_lines(filepath):
         logging.debug(f"Cannot count lines in {filepath}: {e}")
         return 0
 
+def _tool_start(name: str):
+    """Mark tool as running in live view with start_time + historical ETA."""
+    history = _load_tool_times().get(name, [])
+    avg = sum(history) / len(history) if history else 60.0
+    with _live_view_lock:
+        _live_view_data[name]["status"] = "running"
+        _live_view_data[name]["start_time"] = time.time()
+        _live_view_data[name]["eta"] = avg
+
+def _tool_done(name: str, count_key: str, count_file: str = ""):
+    """Mark tool as idle in live view and update count from file."""
+    count = _count_lines(count_file) if count_file and os.path.exists(count_file) else 0
+    with _live_view_lock:
+        _live_view_data[name]["status"] = "idle"
+        _live_view_data[name]["start_time"] = None
+        _live_view_data[name][count_key] = count
+
 def _count_findings(filepath):
     try:
         return sum(1 for _ in open(filepath, 'r', encoding='utf-8', errors='ignore'))
@@ -106,7 +123,7 @@ def _count_findings(filepath):
         logging.debug(f"Cannot count findings in {filepath}: {e}")
         return 0
 
-class MissionRunner:
+
     """Handles a single mission lifecycle: prepare, run vulnerability phase, and finalize."""
     def __init__(self, target_data, stats_pipe=None, config=None):
         self.target = target_data
@@ -126,43 +143,31 @@ class MissionRunner:
         sub_file = paths["sub"]
         limiter = get_rate_limiter(REQUESTS_PER_SECOND)
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        with _live_view_lock:
-            _live_view_data["Subfinder"]["status"] = "running"
+        _tool_start("Subfinder")
         _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
-        with _live_view_lock:
-            _live_view_data["Subfinder"]["status"] = "idle"
-            _live_view_data["Subfinder"]["subs"] = _count_lines(sub_file) if os.path.exists(sub_file) else 0
+        _tool_done("Subfinder", "subs", sub_file)
         
         # DNSX: valida subdomínios e obtém IPs
         live_file = paths["live"]
         unv_file = paths["unv"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        with _live_view_lock:
-            _live_view_data["DNSX"]["status"] = "running"
+        _tool_start("DNSX")
         _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
-        with _live_view_lock:
-            _live_view_data["DNSX"]["status"] = "idle"
-            _live_view_data["DNSX"]["live"] = _count_lines(live_file) if os.path.exists(live_file) else 0
+        _tool_done("DNSX", "live", live_file)
         
         # Uncover: detecta takeover potentials
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        with _live_view_lock:
-            _live_view_data["Uncover"]["status"] = "running"
         uncover_file = paths["sub"] + ".uncover"
+        _tool_start("Uncover")
         _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
-        with _live_view_lock:
-            _live_view_data["Uncover"]["status"] = "idle"
-            _live_view_data["Uncover"]["takeovers"] = _count_lines(uncover_file) if os.path.exists(uncover_file) else 0
+        _tool_done("Uncover", "takeovers", uncover_file)
         
-        # HTTPX: descobre endpoints
+        # HTTPX: descobre endpoints (output = full URLs with protocol)
         httpx_file = paths["live"] + ".httpx"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        with _live_view_lock:
-            _live_view_data["HTTPX"]["status"] = "running"
+        _tool_start("HTTPX")
         _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
-        with _live_view_lock:
-            _live_view_data["HTTPX"]["status"] = "idle"
-            _live_view_data["HTTPX"]["endpoints"] = _count_lines(httpx_file) if os.path.exists(httpx_file) else 0
+        _tool_done("HTTPX", "endpoints", httpx_file)
         
         # Para obter não resolvidos, comparar com a lista de subdomínios
         if os.path.exists(sub_file) and os.path.exists(live_file):
@@ -175,7 +180,7 @@ class MissionRunner:
                     f_unv.write(u + '\n')
 
     def _run_tactical_phase(self, paths):
-        """Executa a fase tática: HTTPX, Katana, JS Hunter, Nuclei."""
+        """Executa a fase tática: Katana, JS Hunter, Nuclei."""
         live_file = paths["live"]
         if not os.path.exists(live_file) or os.path.getsize(live_file) == 0:
             ui_log("INFO", "Nenhum subdomínio vivo. Pulando fase tática.", Colors.WARNING)
@@ -183,35 +188,31 @@ class MissionRunner:
         
         limiter = get_rate_limiter(REQUESTS_PER_SECOND)
         
-        # Katana: crawling inteligente
+        # Use HTTPX output (full URLs) as Katana/Nuclei input when available
+        httpx_file = paths["live"] + ".httpx"
+        has_httpx = os.path.exists(httpx_file) and os.path.getsize(httpx_file) > 0
+        recon_input = httpx_file if has_httpx else live_file
+        
+        # Katana: crawling inteligente com URLs do HTTPX
         katana_file = paths["live"] + ".katana"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        with _live_view_lock:
-            _live_view_data["Katana"]["status"] = "running"
-        _run_with_progress("Katana", lambda: run_katana_surgical(live_file, katana_file, rate_limit=RATE_LIMIT))
-        with _live_view_lock:
-            _live_view_data["Katana"]["status"] = "idle"
-            _live_view_data["Katana"]["crawled"] = _count_lines(katana_file) if os.path.exists(katana_file) else 0
+        _tool_start("Katana")
+        _run_with_progress("Katana", lambda: run_katana_surgical(recon_input, katana_file, rate_limit=RATE_LIMIT))
+        _tool_done("Katana", "crawled", katana_file)
         
         # JS Hunter: extrai segredos de arquivos JavaScript
         js_secrets_file = paths["live"] + ".js_secrets"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        with _live_view_lock:
-            _live_view_data["JS Hunter"]["status"] = "running"
+        _tool_start("JS Hunter")
         _run_with_progress("JS Hunter", lambda: run_js_hunter(katana_file, js_secrets_file))
-        with _live_view_lock:
-            _live_view_data["JS Hunter"]["status"] = "idle"
-            _live_view_data["JS Hunter"]["secrets"] = _count_lines(js_secrets_file) if os.path.exists(js_secrets_file) else 0
+        _tool_done("JS Hunter", "secrets", js_secrets_file)
         
-        # Nuclei: scanning de vulnerabilidades
+        # Nuclei: scanning de vulnerabilidades com URLs do HTTPX
         findings_file = paths["fin"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        with _live_view_lock:
-            _live_view_data["Nuclei"]["status"] = "running"
-        _run_with_progress("Nuclei", lambda: run_nuclei(live_file, findings_file, "cve,misconfig,takeover", self.stats_pipe))
-        with _live_view_lock:
-            _live_view_data["Nuclei"]["status"] = "idle"
-            _live_view_data["Nuclei"]["vulns"] = _count_findings(findings_file) if os.path.exists(findings_file) else 0
+        _tool_start("Nuclei")
+        _run_with_progress("Nuclei", lambda: run_nuclei(recon_input, findings_file, "cve,misconfig,takeover", self.stats_pipe))
+        _tool_done("Nuclei", "vulns", findings_file)
         
         # Consolidar filtragem e validação em um passo único
         if os.path.exists(findings_file):
@@ -358,7 +359,10 @@ Respond only: VALID or INVALID"""
         # Coleta resultados para diff engine (lock protects concurrent live_view reads)
         with _live_view_lock:
             results = {
+                'target': self.target.get('handle', 'unknown'),
+                'score': self.target.get('score', 0),
                 'subdomains': _live_view_data["Subfinder"]["subs"],
+                'alive': _live_view_data["DNSX"]["live"],
                 'endpoints': _live_view_data["HTTPX"]["endpoints"],
                 'js_secrets': _live_view_data["JS Hunter"]["secrets"],
                 'vulns': _live_view_data["Nuclei"]["vulns"],

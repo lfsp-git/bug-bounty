@@ -12,7 +12,7 @@ from typing import List, Dict
 from urllib.parse import urlparse
 
 # Camada de Apresentação desacoplada
-from core.ui_manager import ui_log, Colors, sanitize_input
+from core.ui import ui_log, Colors, sanitize_input
 
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -213,7 +213,7 @@ class PlatformManager:
 def load_custom_targets() -> List[Dict]:
     """Carrega alvos do alvos.txt usando parsing seguro de URL."""
     from config.validators import validate_and_extract_domain
-    from core.ui_manager import ui_log, Colors
+    from core.ui import ui_log, Colors
     
     t = []
     filepath = "alvos.txt"

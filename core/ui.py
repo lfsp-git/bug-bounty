@@ -1,5 +1,5 @@
 """
-HUNT3R v2.5 - UI Manager [UX/UI PREDADOR - EDITION]
+HUNT3R v1.0-EXCALIBUR - UI Manager [UX/UI PREDADOR - EDITION]
 """
 
 import os
@@ -189,6 +189,7 @@ def ui_clear():
         os.system('cls' if os.name == 'nt' else 'clear')
 
 def ui_banner():
+    # 6 art lines (each ends with \n) + 1 version line = 7 lines exactly (_BANNER_LINES)
     b_art = (
         "  ::   .:   ...    ::::::.    :::.:::::::::::: .::.   :::::::..   \n"
         " ,;;   ;;,  ;;     ;;;`;;;;,  `;;;;;;;;;;;'''';'`';;, ;;;;``;;;;  \n"
@@ -197,8 +198,10 @@ def ui_banner():
         " 888   \"88o88    .d888  888    Y88     88,      ,,o888\"888b \"88bo,\n"
         " MMM    YMM \"YmmMMMM\"\"  MMM     YM     MMM      YMMP\"  MMMM   \"W\" \n"
     )
-    print(f"{Colors.PRIMARY}{b_art}{Colors.RESET}")
-    print(f"    {Colors.DIM}v1.0 - EXCALIBUR{Colors.RESET}\n")
+    # print with end="" to suppress extra newline — b_art already has trailing \n per line
+    sys.stdout.write(f"{Colors.PRIMARY}{b_art}{Colors.RESET}")
+    sys.stdout.write(f"    {Colors.DIM}v1.0 - EXCALIBUR{Colors.RESET}\n")
+    sys.stdout.flush()
 
 def ui_clear_and_banner():
     """Stop any active live view, clear screen, and show banner (used by mission header)."""
@@ -210,19 +213,22 @@ def ui_clear_and_banner():
 # ---------------------------------------------------------------------------
 # Live View System (Htop-style)
 # ---------------------------------------------------------------------------
+_BANNER_LINES = 7    # 6 ASCII art lines + 1 version line (exact, no blanks)
+_HEADER_BOX_LINES = 5  # top border + target + score + bottom border + 1 blank
+_FIXED_TOP = _BANNER_LINES + _HEADER_BOX_LINES  # lines frozen at top of terminal
 _LIVE_VIEW_LINES = 12  # lines rendered by live view block (header+sep+7tools+sep+total+sep)
 
 # Estado global do live view
 _live_view_active = False
 _live_view_thread = None
 _live_view_data = {
-    "Subfinder": {"status": "idle", "progress": 0, "subs": 0},
-    "DNSX": {"status": "idle", "progress": 0, "live": 0},
-    "Uncover": {"status": "idle", "progress": 0, "takeovers": 0},
-    "HTTPX": {"status": "idle", "progress": 0, "endpoints": 0},
-    "JS Hunter": {"status": "idle", "progress": 0, "secrets": 0},
-    "Katana": {"status": "idle", "progress": 0, "crawled": 0},
-    "Nuclei": {"status": "idle", "progress": 0, "vulns": 0},
+    "Subfinder": {"status": "idle", "progress": 0, "subs": 0,      "start_time": None, "eta": 0},
+    "DNSX":      {"status": "idle", "progress": 0, "live": 0,      "start_time": None, "eta": 0},
+    "Uncover":   {"status": "idle", "progress": 0, "takeovers": 0, "start_time": None, "eta": 0},
+    "HTTPX":     {"status": "idle", "progress": 0, "endpoints": 0, "start_time": None, "eta": 0},
+    "JS Hunter": {"status": "idle", "progress": 0, "secrets": 0,   "start_time": None, "eta": 0},
+    "Katana":    {"status": "idle", "progress": 0, "crawled": 0,   "start_time": None, "eta": 0},
+    "Nuclei":    {"status": "idle", "progress": 0, "vulns": 0,     "start_time": None, "eta": 0},
 }
 _live_view_meta = {"target": "", "current": 0, "total": 0}
 _live_view_lock = threading.RLock()  # Re-entrant lock prevents deadlocks from nested acquire calls
@@ -241,18 +247,24 @@ def _get_terminal_rows() -> int:
         return 24
 
 def _start_live_view():
-    """Inicia o live view em uma thread separada, reservando área na base do terminal."""
+    """Inicia o live view em uma thread separada, reservando área na base do terminal.
+    
+    Scroll region = rows (_FIXED_TOP+1) .. (rows-_LIVE_VIEW_LINES)
+    Top _FIXED_TOP rows (banner + target box) are frozen.
+    Bottom _LIVE_VIEW_LINES rows (live view) are frozen.
+    """
     global _live_view_active, _live_view_thread
     rows = _get_terminal_rows()
+    scroll_top = _FIXED_TOP + 1
     scroll_bottom = rows - _LIVE_VIEW_LINES
-    # Reserve bottom N lines: set scroll region to rows 1..(rows-N)
-    sys.stdout.write(f"\033[1;{scroll_bottom}r")
-    # Clear live view area
-    sys.stdout.write(f"\033[{scroll_bottom + 1};1H")
-    for _ in range(_LIVE_VIEW_LINES):
-        sys.stdout.write("\033[K\n")
-    # Park cursor at top of scroll region
-    sys.stdout.write("\033[1;1H")
+    # Guard: if terminal is too small, just use basic scroll
+    if scroll_bottom <= scroll_top:
+        scroll_top = 1
+        scroll_bottom = rows - _LIVE_VIEW_LINES
+    # Set scroll region (frozen top + frozen bottom)
+    sys.stdout.write(f"\033[{scroll_top};{scroll_bottom}r")
+    # Park cursor at start of scroll region so logs go there
+    sys.stdout.write(f"\033[{scroll_top};1H")
     sys.stdout.flush()
     _live_view_active = True
     _live_view_thread = threading.Thread(target=_live_view_loop, daemon=True)
@@ -264,13 +276,13 @@ def _terminal_cleanup():
         return
     try:
         rows = _get_terminal_rows()
-        top = rows - _LIVE_VIEW_LINES + 1
+        live_top = rows - _LIVE_VIEW_LINES + 1
         out = sys.stdout
-        out.write("\033[r")               # reset scroll region (full screen)
-        out.write(f"\033[{top};1H")       # jump to start of live view area
+        out.write("\033[r")               # reset scroll region to full screen
+        out.write(f"\033[{live_top};1H")  # jump to start of live view area
         for _ in range(_LIVE_VIEW_LINES):
             out.write("\033[K\n")         # erase each live view line
-        out.write(f"\033[{top};1H")       # park cursor at start of erased area
+        out.write(f"\033[{live_top};1H")  # park cursor at start of erased area
         out.write("\033[?25h")            # ensure cursor is visible
         out.flush()
     except OSError:
@@ -345,9 +357,35 @@ def _render_live_view():
         out.write(f"\r\033[K  {Colors.BOLD}LIVE VIEW{target_str}{progress_str}{elapsed_str}{Colors.RESET}\n")
         out.write(f"\r\033[K  {'─'*56}\n")
 
+        now = time.time()
         for tool, data in _live_view_data.items():
             status_icon = "🟢" if data["status"] == "running" else "🟡" if data["status"] == "idle" else "🔴"
-            progress_bar = "█" * int(data["progress"] * 20) + "░" * (20 - int(data["progress"] * 20))
+
+            # Compute progress ratio from start_time + eta
+            start_t = data.get("start_time")
+            eta = data.get("eta", 0)
+            if data["status"] == "running" and start_t and eta > 0:
+                ratio = min(1.0, (now - start_t) / eta)
+            else:
+                ratio = 1.0 if data["status"] == "idle" and any(
+                    data.get(k, 0) > 0 for k in ("subs", "live", "endpoints", "crawled", "secrets", "vulns", "takeovers")
+                ) else 0.0
+
+            filled = int(ratio * 20)
+            empty = 20 - filled
+            # Color: green < 65%, yellow 65-85%, red > 85%
+            if data["status"] == "running":
+                if ratio < 0.65:
+                    bar_color = "\033[32m"   # green
+                elif ratio < 0.85:
+                    bar_color = "\033[33m"   # yellow
+                else:
+                    bar_color = "\033[31m"   # red
+            else:
+                bar_color = "\033[90m"       # dim grey for idle
+            reset = "\033[0m"
+            progress_bar = f"{bar_color}{'█' * filled}{reset}{'░' * empty}"
+
             count = data.get('subs', data.get('live', data.get('endpoints', data.get('crawled', data.get('secrets', data.get('vulns', 0))))))
             out.write(f"\r\033[K  {status_icon} {tool:<12} [{progress_bar}] {data['status']:<10} | {count:<6}\n")
 
@@ -361,22 +399,27 @@ def _render_live_view():
         out.write(f"\r\033[K  {'─'*56}\n")
 
         # Return cursor to bottom of scroll region so log output stays above live view
-        out.write(f"\033[{rows - _LIVE_VIEW_LINES};1H")
+        scroll_bottom = rows - _LIVE_VIEW_LINES
+        out.write(f"\033[{scroll_bottom};1H")
         out.flush()
 
 def ui_mission_header(handle: str, score: int = 0):
     global _MISSION_START_TIME
     _MISSION_START_TIME = datetime.now()
 
-    ui_clear_and_banner()  # Limpa tela e mostra banner
+    ui_clear_and_banner()  # Limpa tela e mostra banner (rows 1.._BANNER_LINES)
 
     # Limpa o handle: *TEST-ESCALATIONS_VINTEDGO_COM -> TEST-ESCALATIONS.VINTEDGO.COM
     clean_handle = handle.replace('_', '.').replace('*', '').upper()
 
-    print(f"\n\r\033[K  ┌{'─'*56}┐")
-    print(f"\r\033[K  │  TARGET  {Colors.BOLD}{clean_handle:<46}{Colors.RESET}│")
-    print(f"\r\033[K  │  SCORE   {Colors.SUCCESS if score >= 70 else Colors.WARNING if score >= 40 else Colors.DIM}{score:<46}{Colors.RESET}│")
-    print(f"\r\033[K  └{'─'*56}┘\n")
+    # Print exactly _HEADER_BOX_LINES = 5 lines so scroll region aligns correctly
+    score_color = Colors.SUCCESS if score >= 70 else Colors.WARNING if score >= 40 else Colors.DIM
+    sys.stdout.write(f"\r\033[K  ┌{'─'*56}┐\n")
+    sys.stdout.write(f"\r\033[K  │  TARGET  {Colors.BOLD}{clean_handle:<46}{Colors.RESET}│\n")
+    sys.stdout.write(f"\r\033[K  │  SCORE   {score_color}{score:<46}{Colors.RESET}│\n")
+    sys.stdout.write(f"\r\033[K  └{'─'*56}┘\n")
+    sys.stdout.write(f"\r\033[K\n")  # blank separator line
+    sys.stdout.flush()
 
     # Inicia o live view apenas se o terminal estiver configurado
     if os.getenv('TERM') and sys.stdout.isatty():
