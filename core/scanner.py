@@ -11,6 +11,7 @@ from core.ui import (
     ui_mission_footer, Colors, _live_view_data, _live_view_lock, ui_set_mission_meta,
     _get_current_worker, ui_worker_tool_started, ui_worker_tool_finished,
     ui_worker_tool_cached, ui_worker_tool_error, ui_worker_nuclei_update,
+    set_worker_context,
 )
 
 # Engine Imports
@@ -81,10 +82,12 @@ def _run_with_progress(label, fn, live_tail_pipe=None, extra_stats_fn=None):
     """Execute tool with progress spinner. Returns True on success, False on error."""
     start_time = time.time()
     stop_event = threading.Event()
+    worker_id = _get_current_worker()
     history = _load_tool_times().get(label, [])
     avg_time = sum(history)/len(history) if history else 0
     
     def _spinner():
+        set_worker_context(worker_id)
         idx, chars = 0, ['-', '\\', '|', '/']
         while not stop_event.is_set():
             elapsed = time.time() - start_time

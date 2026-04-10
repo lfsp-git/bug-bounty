@@ -473,7 +473,9 @@ def _render_worker_panel(w: Dict) -> Panel:
         title = f"[dim]{wid}[/dim]"
         return Panel(content, title=title, border_style=border, box=ROUNDED, padding=(0, 1), height=13)
 
-    clean = target.replace('*', '').upper()
+    clean = target.replace('*', '').replace(':', '').upper()
+    if len(clean) > 20:
+        clean = clean[:17] + "..."
     idx = w.get('idx', 0)
     total = w.get('total', 0)
     start = w.get('start_time')
@@ -483,9 +485,9 @@ def _render_worker_panel(w: Dict) -> Panel:
 
     tbl = Table(show_header=False, box=None, padding=(0, 0), expand=True)
     tbl.add_column("s",    width=2,  no_wrap=True)
-    tbl.add_column("tool", width=11, no_wrap=True)
+    tbl.add_column("tool", width=13, no_wrap=True)
     tbl.add_column("bar",  width=12, no_wrap=True)
-    tbl.add_column("info", no_wrap=True)
+    tbl.add_column("info", width=8, no_wrap=True, overflow="crop")
 
     for tool_name in PIPELINE_TOOLS:
         t = w['tools'].get(tool_name, {'status': 'idle', 'count': 0})
@@ -541,11 +543,12 @@ def _render_worker_panel(w: Dict) -> Panel:
             info_str = "[dim]—[/dim]"
 
         bar = _progress_bar(ratio, width=10, style=bar_style)
-        icon = TOOL_ICONS.get(tool_name, '●')
         tool_style = "bold yellow" if st == 'running' else "dim" if st == 'idle' else "white"
+        # Use ASCII-only labels in worker tables to avoid terminal width drift with emoji.
+        label_txt = tool_name[:12]
         tbl.add_row(
             f"[{sym_style}]{sym}[/]",
-            f"[{tool_style}]{icon} {tool_name:<9}[/]",
+            f"[{tool_style}]{label_txt:<12}[/]",
             bar,
             info_str,
         )
@@ -562,7 +565,10 @@ def _render_worker_panel(w: Dict) -> Panel:
     content = Group(tbl, Rule(style="dim"), metrics)
     border = "yellow" if status == 'running' else "green" if status == 'done' else "dim"
     title = f"[bold]{wid}[/bold]: [cyan]{clean}[/cyan] [{idx}/{total}] {elapsed_str}"
-    return Panel(content, title=title, border_style=border, box=ROUNDED, padding=(0, 0), height=13)
+    return Panel(
+        content, title=title, border_style=border, box=ROUNDED,
+        padding=(0, 0), height=13, expand=True
+    )
 
 def _render_activity_panel(n: int = 18) -> Panel:
     with _activity_lock:

@@ -25,8 +25,9 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
     Creates an empty output file to keep pipeline functional.
     """
     os.makedirs(os.path.dirname(outp), exist_ok=True)
-    # Skip execution when not in a proper terminal (e.g., during automated tests)
-    if not os.getenv('TERM') or not sys.stdout.isatty():
+    # Skip execution only when explicitly disabled or in test context.
+    # Watchdog/service mode may run without a TTY and still must execute tools.
+    if os.getenv("HUNT3R_DISABLE_TOOL_EXECUTION") == "1" or os.getenv("PYTEST_CURRENT_TEST"):
         ui_log("ENGINE_SKIP", f"Skipping {label} execution in non-interactive mode.", Colors.WARNING)
         open(outp, 'w').close()
         return
@@ -112,8 +113,8 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=Non
     exe = find_tool("nuclei")
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-    # Skip in non-interactive mode
-    if not os.getenv('TERM') or not sys.stdout.isatty():
+    # Skip only when explicitly disabled or in test context.
+    if os.getenv("HUNT3R_DISABLE_TOOL_EXECUTION") == "1" or os.getenv("PYTEST_CURRENT_TEST"):
         ui_log("ENGINE_SKIP", "Skipping Nuclei in non-interactive mode.", Colors.WARNING)
         open(output_file, 'w').close()
         return
