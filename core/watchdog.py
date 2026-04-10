@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import shlex
 from datetime import datetime, timedelta
-from core.dedup import to_set  # Unified deduplication
+from core.config import to_set  # Unified deduplication
 
 # Adiciona os caminhos de binários ao PATH
 home = os.path.expanduser("~")
@@ -22,8 +22,8 @@ os.environ["PATH"] += os.pathsep + os.path.join(home, "go", "bin") + os.pathsep 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Importe apenas o necessário
-from core.ui_manager import ui_log, Colors, ui_clear_and_banner
-from core.timeouts import TOOL_TIMEOUTS  # Centralized timeouts
+from core.ui import ui_log, Colors, ui_clear_and_banner
+from core.config import TOOL_TIMEOUTS  # Centralized timeouts
 
 # Configurações
 GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
@@ -101,13 +101,19 @@ def _fetch_global_wildcards():
             ui_log("WATCHDOG", f"PULADO: {name.upper()} (Timeout excedido).", Colors.WARNING)
 
     # Configuração de comandos com env vars escapados - usando timeouts centralizados
+    from recon.tool_discovery import find_tool
+    bbscope_path = find_tool("bbscope")
+    if bbscope_path == "bbscope" and not shutil.which("bbscope"):
+        ui_log("WATCHDOG", "bbscope não encontrado. Pulando coleta de wildcards via API.", Colors.WARNING)
+        return []
+
     tasks = []
     if h1_u_safe and h1_t_safe:
-        tasks.append(("h1", ["bbscope", "h1", "-b", "-o", "t", "-u", h1_u_safe, "-t", h1_t_safe, "--active-only"], TOOL_TIMEOUTS.get("uncover", 90)))
+        tasks.append(("h1", [bbscope_path, "h1", "-b", "-o", "t", "-u", h1_u_safe, "-t", h1_t_safe, "--active-only"], TOOL_TIMEOUTS.get("uncover", 90)))
     if bc_t_safe:
-        tasks.append(("bc", ["bbscope", "bc", "-b", "-o", "t", "-t", bc_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
+        tasks.append(("bc", [bbscope_path, "bc", "-b", "-o", "t", "-t", bc_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
     if it_t_safe:
-        tasks.append(("it", ["bbscope", "it", "-b", "-o", "t", "-t", it_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
+        tasks.append(("it", [bbscope_path, "it", "-b", "-o", "t", "-t", it_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
 
     # Dispara as threads
     for t_name, t_cmd, t_time in tasks:
@@ -127,7 +133,7 @@ def _fetch_global_wildcards():
 
 def _process_raw_to_targets(raw_list):
     """Lógica auxiliar para limpar e rankear os wildcards brutos."""
-    from core.dedup import to_set
+    from core.config import to_set
     
     # Load history once at start (optimization: avoid repeated file I/O)
     history = to_set([])
@@ -239,9 +245,9 @@ def run_watchdog():
         ui_log("WATCHDOG", f"=== CICLO {ts} ===", Colors.BOLD)
         wildcards = _fetch_global_wildcards()
         if wildcards:
-            from core.orchestrator import ProOrchestrator
-            from core.intelligence import IntelMiner
-            from core.ai_client import AIClient
+            from core.scanner import ProOrchestrator
+            from core.ai import IntelMiner
+            from core.ai import AIClient
             orch = ProOrchestrator(IntelMiner(AIClient()))
             for t in wildcards:
                 try:
