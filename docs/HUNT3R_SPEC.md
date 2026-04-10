@@ -1,33 +1,90 @@
 # 🛡️ HUNT3R v1.0-EXCALIBUR: Technical Specification
 
 ## 🔄 THE PIPELINE (PREDATOR CYCLE)
-1. WATCHDOG: coleta wildcards (H1/BC/IT) em ciclos de 4–6h com cache de 12h.
-2. DIFF ENGINE: compara com `recon/baselines/{handle}*`, processa apenas novos/alterados.
-3. RECON: Subfinder → DNSX → Uncover → HTTPX.
-4. TACTICAL: Katana crawler → JS Hunter → Nuclei (tags: cve, takeover, misconfig).
-5. VALIDATION: FalsePositiveKiller + AI (score ≥ 80 targets only).
-6. NOTIFY: Telegram (Critical/High/Medium) · Discord (Low/Info batch).
-7. REPORT: BugBountyReporter gera `reports/<handle>_<date>_report.md`.
+1. **WATCHDOG**: coleta wildcards (H1/BC/IT) em ciclos de 4–6h com cache de 12h.
+2. **DIFF ENGINE**: compara com `recon/baselines/{handle}.json`, processa apenas novos/alterados.
+3. **RECON**: Subfinder → DNSX → Uncover → HTTPX.
+4. **TACTICAL**: Katana crawler → JS Hunter → Nuclei (tags: cve, takeover, misconfig).
+5. **VALIDATION**: FalsePositiveKiller (6 filtros) + AI scoring (IntelMiner, score ≥ 80).
+6. **NOTIFY**: Telegram (Critical/High/Medium) · Discord (Low/Info batch).
+7. **REPORT**: BugBountyReporter gera `reports/<handle>_<date>_report.md`.
 
-## 🧩 ARCHITECTURE
+## 🧩 ARCHITECTURE (Clean)
 
 ```
-ProOrchestrator
-  └── MissionRunner.run()
-        ├── _run_recon_phase()        [subfinder/dnsx/uncover/httpx]
-        ├── _run_vulnerability_phase() [sniper filter + truncation guard]
-        │     └── _run_tactical_phase()
-        │           ├── katana
-        │           ├── js_hunter
-        │           ├── nuclei
-        │           └── _filter_and_validate_findings() [FP + AI]
-        ├── _notify_and_report()      [NotificationDispatcher + BugBountyReporter]
-        └── ReconDiff.save_baseline()
+main.py (CLI entry point)
+  ├── ProOrchestrator
+  │     └── MissionRunner.run()
+  │           ├── _run_recon_phase()          [subfinder/dnsx/uncover/httpx]
+  │           ├── _run_vulnerability_phase()  [sniper filter + truncation guard]
+  │           │     └── _run_tactical_phase()
+  │           │           ├── katana
+  │           │           ├── js_hunter
+  │           │           ├── nuclei
+  │           │           └── FalsePositiveKiller + IntelMiner
+  │           ├── _notify_and_report()        [NotificationDispatcher + BugBountyReporter]
+  │           └── ReconDiff.save_baseline()
+  └── WatchdogLoop (--watchdog)
+
+core/ (12 módulos)
+  config.py    — constantes, timeouts, rate limiter, dedup, validators
+  ai.py        — AIClient (OpenRouter) + IntelMiner
+  storage.py   — ReconDiff (baseline diff) + CheckpointManager
+  export.py    — ExportFormatter (CSV/XLSX/XML) + run_dry_run
+  ui.py        — terminal UI, live view, threading.RLock
+  filter.py    — FalsePositiveKiller (6 filtros)
+  scanner.py   — MissionRunner + ProOrchestrator
+  notifier.py  — NotificationDispatcher (Telegram/Discord)
+  reporter.py  — BugBountyReporter (Markdown reports)
+  watchdog.py  — loop 24/7 autônomo
+  updater.py   — ToolUpdater (PDTM + nuclei-templates)
+  __init__.py
+
+recon/ (4 módulos)
+  engines.py        — run_subfinder, run_dnsx, run_uncover, run_httpx, run_katana, run_nuclei
+  js_hunter.py      — JSHunter (extração real de secrets de JS)
+  platforms.py      — H1Platform, BCPlatform, ITigriti, PlatformManager
+  tool_discovery.py — find_tool() com cache, busca em ~/.pdtm/go/bin + ~/go/bin + PATH
 ```
 
 ## 📡 NOTIFICATION ROUTING
-- **Telegram**: Critical, High, Medium, JS secrets, escalations.
-- **Discord**: Low, Info (batch embed), recon logs.
+| Severity | Canal | Formato |
+|----------|-------|---------|
+| Critical / High | Telegram | HTML individual por finding |
+| Medium | Telegram | HTML batch |
+| JS Secrets | Telegram | HTML individual |
+| Low / Info | Discord | Embed batch |
+| Recon logs | Discord | Text |
+
+## 🛡️ SECURITY
+- Tokens: nunca logados, nunca em código — apenas via `.env`
+- Command injection: `shlex.quote()` em todos os subprocessos
+- `.env.example`: apenas placeholders genéricos (sem dados reais)
+- Exception handling: específico em todos os módulos
+
+## 🧪 TESTES
+```bash
+python3 -m pytest tests/test_hunt3r.py -v  # 36 testes, 36 PASS
+```
+Cobre: config, storage, filter, export, ai, notifier, reporter, dry-run, imports.
+
+## 📋 CLI
+```bash
+python3 main.py                    # Menu interativo
+python3 main.py --target h1.com    # Scan direto
+python3 main.py --watchdog         # Modo autônomo 24/7
+python3 main.py --dry-run          # Preview sem executar ferramentas
+python3 main.py --resume <id>      # Retomar scan interrompido
+python3 main.py --export csv       # Exportar findings
+python3 main.py --update           # Atualizar ferramentas PDTM
+```
+
+## 🔜 PRÓXIMO (FASE 5)
+1. Race condition UI — auditar acessos a `_live_view_data` no watchdog
+2. Teste de integração real com ferramentas instaladas
+3. bbscope fallback gracioso no watchdog
+4. CENSYS_API_ID/SECRET no .env real
+
 
 ## 📤 OUTPUTS
 - `recon/baselines/<handle>_findings.jsonl` — raw Nuclei JSONL
