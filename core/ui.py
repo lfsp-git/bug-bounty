@@ -345,7 +345,10 @@ signal.signal(signal.SIGINT, _sigint_handler)
 def _live_view_loop():
     """Loop principal do live view."""
     while _live_view_active:
-        _render_live_view()
+        try:
+            _render_live_view()
+        except Exception:
+            logging.debug("Live view render error", exc_info=True)
         time.sleep(0.5)
 
 _last_live_view_render = None
@@ -356,6 +359,7 @@ def _render_live_view():
     """Renderiza o live view ancorado na base do terminal.
     
     Status colors: idle=grey, running=yellow, finished=green(or blue if 0), error=red.
+    Data is snapshotted under _live_view_lock to prevent race conditions with tool callbacks.
     """
     global _last_live_view_render, _live_view_last_update
 
@@ -372,6 +376,10 @@ def _render_live_view():
         _last_live_view_render = current_render
         _live_view_last_update = current_time
 
+        # Snapshot data for rendering (prevents race with tool callbacks)
+        data_snap = {k: dict(v) for k, v in _live_view_data.items()}
+        meta_snap = dict(_live_view_meta)
+
     # Skip render if main thread is printing — avoids cursor race condition
     if not _stdout_lock.acquire(blocking=False):
         return
@@ -380,9 +388,9 @@ def _render_live_view():
         top_of_view = rows - _LIVE_VIEW_LINES + 1  # first line of live view area
 
         # Build header info
-        target = _live_view_meta.get("target", "")
-        cur = _live_view_meta.get("current", 0)
-        total = _live_view_meta.get("total", 0)
+        target = meta_snap.get("target", "")
+        cur = meta_snap.get("current", 0)
+        total = meta_snap.get("total", 0)
 
         elapsed_str = ""
         if _MISSION_START_TIME:
@@ -402,9 +410,9 @@ def _render_live_view():
 
         now = time.time()
         RST = "\033[0m"
-        for tool, data in _live_view_data.items():
+        for tool, data in data_snap.items():
             count = _get_tool_count(tool, data)
-            status = data["status"]
+            status = data.get("status", "idle")
 
             # Determine color based on status
             if status == "idle":
@@ -426,9 +434,10 @@ def _render_live_view():
             eta = data.get("eta", 0)
 
             if status == "running":
-                if tool == "Nuclei" and data.get("requests_total", 0) > 0:
-                    ratio = min(1.0, data["requests_done"] / data["requests_total"])
-                elif start_t and eta > 0:
+                req_total = data.get("requests_total", 0)
+                if tool == "Nuclei" and req_total and req_total > 0:
+                    ratio = min(1.0, data.get("requests_done", 0) / req_total)
+                elif start_t and eta and eta > 0:
                     ratio = min(1.0, (now - start_t) / eta)
                 else:
                     ratio = 0.0
@@ -444,11 +453,12 @@ def _render_live_view():
             # ETA / stats info for running tools
             extra = ""
             if status == "running":
-                if tool == "Nuclei" and data.get("requests_total", 0) > 0:
+                req_total = data.get("requests_total", 0)
+                if tool == "Nuclei" and req_total and req_total > 0:
                     rps = data.get("rps", 0)
                     pct = int(ratio * 100)
                     extra = f" {rps}r/s {pct}%"
-                elif start_t and eta > 0:
+                elif start_t and eta and eta > 0:
                     remaining = max(0, int(eta - (now - start_t)))
                     extra = f" ~{remaining}s"
 
@@ -456,11 +466,11 @@ def _render_live_view():
 
         out.write(f"\r\033[K  {'─'*56}\n")
 
-        total_subs = _live_view_data["Subfinder"].get("subs", 0)
-        total_live = _live_view_data["DNSX"].get("live", 0)
-        total_tech = _live_view_data["HTTPX"].get("endpoints", 0)
-        total_ep = _live_view_data["Katana"].get("crawled", 0)
-        total_vulns = _live_view_data["Nuclei"].get("vulns", 0)
+        total_subs = data_snap["Subfinder"].get("subs", 0)
+        total_live = data_snap["DNSX"].get("live", 0)
+        total_tech = data_snap["HTTPX"].get("endpoints", 0)
+        total_ep = data_snap["Katana"].get("crawled", 0)
+        total_vulns = data_snap["Nuclei"].get("vulns", 0)
         out.write(f"\r\033[K  {Colors.INFO}TOTAL: {total_subs} SUB | {total_live} LV | {total_tech} TECH | {total_ep} EP | {total_vulns} VN{Colors.RESET}\n")
         out.write(f"\r\033[K  {'─'*56}\n")
 

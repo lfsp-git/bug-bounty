@@ -152,12 +152,16 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50,
                     line = line.strip()
                     if not line:
                         continue
-                    if progress_callback and line.startswith('{'):
+                    if line.startswith('{'):
                         try:
                             stats = json.loads(line)
-                            progress_callback(stats)
+                            if progress_callback:
+                                progress_callback(stats)
                         except (json.JSONDecodeError, ValueError):
                             pass
+                    else:
+                        # Log non-JSON lines (errors, template loading, etc.)
+                        logging.info(f"Nuclei: {line[:200]}")
             except (OSError, ValueError):
                 pass
             finally:
@@ -191,44 +195,55 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=50,
     except Exception as e:
         ui_log("ENGINE_ERR", f"Nuclei failed: {str(e)[:50]}", Colors.ERROR)
 
+SECRET_SEVERITY = {
+    'aws_access_key': 'critical', 'aws_secret_key': 'critical', 'private_key': 'critical',
+    'password_or_secret': 'high', 'stripe_key': 'high', 'slack_webhook': 'high', 'discord_webhook': 'high',
+    'generic_api_key': 'medium', 'auth_token': 'medium', 'jwt_token': 'medium',
+    'firebase_db': 'medium', 'google_api': 'medium',
+    'interactsh': 'low', 'generic_url_param': 'low',
+}
+
 def run_js_hunter(katana_file, output_file):
-    """Extrai segredos de arquivos JavaScript encontrados pelo Katana."""
+    """Extrai segredos de arquivos JavaScript encontrados pelo Katana.
+    Output: JSONL with {type, value, source, url, severity} per line.
+    """
     ui_log("JS Hunter", "Analisando arquivos JS em busca de segredos...", Colors.INFO)
+    
+    # Truncate output at start (consistent with all other tools)
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    open(output_file, 'w').close()
     
     secrets_found = []
     
     if not os.path.exists(katana_file):
         ui_log("JS Hunter", "Nenhum arquivo JS encontrado (Katana output ausente)", Colors.WARNING)
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        open(output_file, 'w').close()
         return
+    
+    from recon.js_hunter import JSHunter
     
     with open(katana_file, 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
-            line = line.strip()
-            if not line:
+            url = line.strip()
+            if not url:
                 continue
-            # Check if line is a URL to a JS file
-            if line.endswith('.js'):
-                # Use JSHunter to extract real secrets from JS files
+            if url.endswith(('.js', '.mjs', '.ts')):
                 try:
-                    from recon.js_hunter import JSHunter
-                    hunter = JSHunter()
-                    extracted = hunter.scan_url(line)
+                    extracted = JSHunter.scan_url(url)
                     for secret in extracted:
+                        stype = secret.get('type', 'unknown')
                         secrets_found.append({
-                            'type': secret.get('type', 'Unknown'),
+                            'type': stype,
                             'value': secret.get('value', ''),
-                            'url': line,
-                            'confidence': secret.get('confidence', 0.9)
+                            'source': url,
+                            'url': url,
+                            'severity': SECRET_SEVERITY.get(stype, 'low'),
                         })
                 except Exception as e:
-                    logging.debug(f"Failed to extract secrets from {line}: {e}")
+                    logging.debug(f"Failed to extract secrets from {url}: {e}")
     
-    # Write results
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    # Write results as JSONL (compatible with notifier + reporter)
     with open(output_file, 'w', encoding='utf-8') as f:
         for secret in secrets_found:
-            f.write(f"{secret['type']}: {secret['value']} (encontrado em {secret['url']})\n")
+            f.write(json.dumps(secret) + '\n')
     
     ui_log("JS Hunter", f"Encontrados {len(secrets_found)} potenciais segredos", Colors.WARNING if secrets_found else Colors.SUCCESS)

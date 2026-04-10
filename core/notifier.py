@@ -75,6 +75,7 @@ def _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep=False):
     emoji = {
         "CRITICAL": "🔴",
         "HIGH": "🟠",
+        "MEDIUM": "🟡",
     }.get(sev, "⚪")
 
     prefix = "<b>[DEEP-SCAN]</b> " if is_deep else ""
@@ -204,13 +205,13 @@ class NotificationDispatcher:
                     cve = d.get("cve-id", "N/A")
                     is_deep = d.get("_deep_scan", False)
 
-                    # Telegram: Critical + High
-                    if sev in ("CRITICAL", "HIGH") and tg:
+                    # Telegram: Critical + High + Medium
+                    if sev in ("CRITICAL", "HIGH", "MEDIUM") and tg:
                         html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                         _tg_post(tg[0], tg[1], html)
 
-                    # Discord: all severities for monitoring
-                    if dc:
+                    # Discord: Low + Info (monitoring)
+                    if sev in ("LOW", "INFO") and dc:
                         embed = _build_dc_nuclei_embed(sev, target, tid, matched, cve)
                         _dc_post(dc, embed)
         except Exception as e:
@@ -218,14 +219,16 @@ class NotificationDispatcher:
 
     @classmethod
     def alert_js_secrets(cls, js_file, target):
-        """Send ALL JS secrets to Telegram (they are priority)."""
+        """Route JS secrets by severity: Critical/High/Medium → Telegram, Low → Discord."""
         tg = NotifierConfig.telegram()
-        if not tg:
+        dc = NotifierConfig.discord()
+        if not tg and not dc:
             return
         if not os.path.exists(js_file) or os.path.getsize(js_file) == 0:
             return
 
-        count = 0
+        tg_count = 0
+        dc_count = 0
         try:
             with open(js_file, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -238,27 +241,37 @@ class NotificationDispatcher:
                         continue
 
                     stype = d.get("type", "?")
-                    source = d.get("source", "")
+                    source = d.get("source", d.get("url", ""))
                     val = d.get("value", "")[:80]
+                    severity = d.get("severity", "low").upper()
 
-                    html = (
-                        f"🟣 <b>[JS SECRET] {target}</b>\n"
-                        f"Type: <code>{stype}</code>\n"
-                        f"Source: <code>{source[:80]}</code>\n"
-                    )
-                    if "_escalation_report" in d:
-                        html += f"<b>Validação:</b>\n<pre>{_tg_escape(d['_escalation_report'])}</pre>\n"
-                    else:
-                        html += f"Value: <code>{val}</code>\n"
-                    _tg_post(tg[0], tg[1], html)
-                    count += 1
-                    if count >= 20:
+                    if severity in ("CRITICAL", "HIGH", "MEDIUM") and tg:
+                        emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡"}.get(severity, "🟣")
+                        html = (
+                            f"{emoji} <b>[JS SECRET] [{severity}] {target}</b>\n"
+                            f"Type: <code>{_tg_escape(stype)}</code>\n"
+                            f"Source: <code>{_tg_escape(source[:80])}</code>\n"
+                            f"Value: <code>{_tg_escape(val)}</code>\n"
+                        )
+                        _tg_post(tg[0], tg[1], html)
+                        tg_count += 1
+                    elif dc:
+                        embed = {
+                            "title": f"[JS Secret] {target}",
+                            "description": f"Type: `{stype}`\nSource: `{source[:80]}`\nValue: `{val}`",
+                            "color": 0x9B59B6,
+                        }
+                        _dc_post(dc, embed)
+                        dc_count += 1
+
+                    if tg_count + dc_count >= 30:
                         break  # Prevent flood
         except Exception as e:
             logging.error(f"Notifier JS alert error: {e}")
 
-        if count > 0:
-            ui_log("NOTIFIER", f"Aliased {count} JS secrets to Telegram.", Colors.SUCCESS)
+        total = tg_count + dc_count
+        if total > 0:
+            ui_log("NOTIFIER", f"JS secrets: {tg_count} → Telegram, {dc_count} → Discord", Colors.SUCCESS)
 
     @classmethod
     def recon_log(cls, message):

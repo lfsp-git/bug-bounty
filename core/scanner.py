@@ -101,7 +101,8 @@ def _run_with_progress(label, fn, live_tail_pipe=None):
 
 def _count_lines(filepath):
     try:
-        return sum(1 for _ in open(filepath, 'r', encoding='utf-8', errors='ignore'))
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as fh:
+            return sum(1 for _ in fh)
     except (FileNotFoundError, IOError) as e:
         logging.debug(f"Cannot count lines in {filepath}: {e}")
         return 0
@@ -141,7 +142,8 @@ def _nuclei_progress_callback(stats):
 
 def _count_findings(filepath):
     try:
-        return sum(1 for _ in open(filepath, 'r', encoding='utf-8', errors='ignore'))
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as fh:
+            return sum(1 for _ in fh)
     except (FileNotFoundError, IOError) as e:
         logging.debug(f"Cannot count findings in {filepath}: {e}")
         return 0
