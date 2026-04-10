@@ -457,11 +457,12 @@ def ui_scan_summary(results: dict):
     print(f"\r\033[K{Colors.SECONDARY}{'='*70}{Colors.RESET}\n")
 
 def ui_mission_footer():
-    """Finaliza a missão, parando o live view e limpando a tela."""
+    """Finaliza a missão, parando o live view e restaurando o terminal."""
     _stop_live_view()
-    # Limpa a área do live view, mas mantém o último estado visível por um momento
-    time.sleep(1)
-    print("\033[2J\033[H", end="")  # Limpa a tela e move para o canto superior esquerdo
+    # Reset scroll region fully so subsequent output (summary, enter prompt) renders normally
+    if sys.stdout.isatty():
+        sys.stdout.write("\033[r\033[?25h")
+        sys.stdout.flush()
 
 def ui_ranking_board(top_targets: list):
     print(f"\n\r\033[K  {Colors.BOLD}RANKING DE ALVOS (TOP {len(top_targets)}){Colors.RESET}")

@@ -145,7 +145,7 @@ def state_manual(orch: ProOrchestrator) -> None:
         orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
         try:
             input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             pass
 
 
