@@ -1,5 +1,6 @@
 import json, re, os, logging
 from core.ui import ui_log, Colors
+from core.ml_filter import MLFilter
 
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -99,5 +100,12 @@ class FalsePositiveKiller:
         # Filter 7: Micro findings (too short to be real, e.g., single char)
         if len(extracted_str.strip()) < 3:
             return "Micro"
+        
+        # Filter 8: ML-based detection (FASE 8)
+        from core.config import ML_FILTER_ENABLED, ML_CONFIDENCE_THRESHOLD
+        if ML_FILTER_ENABLED:
+            is_fp, confidence = MLFilter.score_finding(finding, ML_CONFIDENCE_THRESHOLD)
+            if is_fp:
+                return f"ML({confidence:.2f})"
         
         return ""  # Passed all filters

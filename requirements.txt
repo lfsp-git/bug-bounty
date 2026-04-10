@@ -7,4 +7,4 @@ httpx
 pydantic
 pydantic-settings
 tldextract
-rich
+richlightgbm>=3.3.0

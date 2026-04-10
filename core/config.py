@@ -190,3 +190,8 @@ def validate_and_extract_domain(input_str: str) -> str:
         except (ValueError, AttributeError):
             return ""
     return s if is_valid_domain(s) else ""
+
+# FASE 8: ML Filter Configuration
+ML_FILTER_ENABLED = True                    # Enable ML-based FP filtering
+ML_CONFIDENCE_THRESHOLD = 0.5               # Probability threshold for FP (0-1)
+ML_MODEL_PATH = "/home/leonardofsp/bug-bounty/models/fp_filter_v1.pkl"

@@ -1,0 +1,2 @@
+template_id,severity,target,response_len,request_len,extracted_len,host,matched_at,tags,content_type,host_type,matched_status,source,is_false_positive
+CVE-2024-2473,medium,indaiatuba_sp_gov_br,0,0,0,https://www.educmunicipal.indaiatuba.sp.gov.br/wp-admin/?action=postpass,https://www.educmunicipal.indaiatuba.sp.gov.br/wp-admin/?action=postpass,http,unknown,wordpress,200,text,1
