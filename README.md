@@ -6,7 +6,7 @@ Hunt3r is an autonomous recon + vuln hunting pipeline focused on fast cycles, lo
 
 - **Phase status**: FASE 8 complete (ML false-positive layer integrated)
 - **Watchdog UI**: Rich Live full-screen tactical dashboard (3 worker panels + activity log)
-- **Latest tests**: `66 passed, 5 warnings, 11 subtests passed`
+- **Latest tests**: `66 passed, 0 warnings, 11 subtests passed`
 - **Recent core commits**:
   - `c7e1084` UX telemetry alignment for watchdog
   - `14d2c57` full tactical UI redesign (3 workers)
@@ -50,6 +50,20 @@ python3 main.py --export csv
 - Auto-snapshot on worker/scan errors:
   - `logs/snapshot_<label>_<timestamp>.json`
 
+## VPS-aware performance tuning
+
+Hunt3r now auto-tunes runtime constants from host capacity (`os.cpu_count()` + `/proc/meminfo`):
+
+- `RATE_LIMIT`
+- `NUCLEI_RATE_LIMIT`
+- `NUCLEI_CONCURRENCY`
+- `WATCHDOG_WORKERS`
+
+Default policy:
+- low-capacity hosts: conservative
+- mid-capacity hosts (4c/8GB): balanced
+- higher-capacity hosts: higher throughput
+
 ## Main modules
 
 - `core/scanner.py`: MissionRunner + ProOrchestrator + runtime pipeline orchestration
@@ -72,4 +86,3 @@ python3 -m pytest tests/ -q
 - `STATUS.md`: current execution status snapshot
 - `PLAN.md`: phase roadmap and milestones
 - `FASE8_SUMMARY.md`: ML integration/training details
-

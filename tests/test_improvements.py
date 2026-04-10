@@ -78,7 +78,7 @@ def test_tech_detection():
             passed += 1
     
     print(f"\nResult: {passed}/{len(test_cases)} passed")
-    return passed == len(test_cases)
+    assert passed == len(test_cases)
 
 def test_nuclei_tag_generation():
     """Test tag generation matches tech stack"""
@@ -119,7 +119,7 @@ def test_nuclei_tag_generation():
             passed += 1
     
     print(f"\nResult: {passed}/{len(test_cases)} passed")
-    return passed == len(test_cases)
+    assert passed == len(test_cases)
 
 def test_bounty_scoring():
     """Test bounty program scoring"""
@@ -169,7 +169,7 @@ def test_bounty_scoring():
     status = "✅ PASS" if passed else "❌ FAIL"
     print(f"\n{status} | New programs prioritized over old")
     
-    return passed
+    assert passed
 
 def test_timeout_config():
     """Verify timeout reduction"""
@@ -190,7 +190,7 @@ def test_timeout_config():
     if has_2s_timeout:
         print("  Expected impact: ~40% speedup for responsive targets")
     
-    return has_2s_timeout and not old_5s_timeout
+    assert has_2s_timeout and not old_5s_timeout
 
 def test_smart_tag_integration():
     """Verify smart tags are integrated in scanner"""
@@ -218,7 +218,7 @@ def test_smart_tag_integration():
     if has_call:
         print("  ✓ Called before Nuclei execution")
     
-    return all_integrated
+    assert all_integrated
 
 def run_all_tests():
     """Run all tests and report"""
@@ -226,12 +226,19 @@ def run_all_tests():
     print("🧪 HUNT3R IMPROVEMENTS TEST SUITE")
     print("=" * 70)
     
+    def _run_test(fn):
+        try:
+            fn()
+            return True
+        except AssertionError:
+            return False
+
     results = {
-        'Tech Detection': test_tech_detection(),
-        'Nuclei Tag Gen': test_nuclei_tag_generation(),
-        'Bounty Scoring': test_bounty_scoring(),
-        'Timeout Config': test_timeout_config(),
-        'Smart Tag Inte': test_smart_tag_integration(),
+        'Tech Detection': _run_test(test_tech_detection),
+        'Nuclei Tag Gen': _run_test(test_nuclei_tag_generation),
+        'Bounty Scoring': _run_test(test_bounty_scoring),
+        'Timeout Config': _run_test(test_timeout_config),
+        'Smart Tag Inte': _run_test(test_smart_tag_integration),
     }
     
     print("\n" + "=" * 70)

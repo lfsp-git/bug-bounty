@@ -15,7 +15,14 @@ import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from core.config import to_set
+from core.config import (
+    to_set,
+    TOOL_TIMEOUTS,
+    WATCHDOG_WORKERS,
+    WATCHDOG_MAX_TARGETS,
+    WATCHDOG_SLEEP_MIN,
+    WATCHDOG_SLEEP_MAX,
+)
 
 home = os.path.expanduser("~")
 os.environ["PATH"] += os.pathsep + os.path.join(home, "go", "bin") + os.pathsep + "/usr/local/bin"
@@ -27,28 +34,28 @@ from core.ui import (
     ui_worker_register, ui_worker_done, ui_snapshot, ui_cycle_started,
     set_worker_context, _WORKER_SLOTS,
 )
-from core.config import TOOL_TIMEOUTS
 from core.bounty_scorer import BountyScorer
 
 GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
 SCAN_HISTORY_FILE = "recon/baselines/target_scan_history.txt"
-SLEEP_MIN = 14400
-SLEEP_MAX = 21600
-MAX_TARGETS_PER_CYCLE = 50
-MAX_PARALLEL_WORKERS = 3
+SLEEP_MIN = WATCHDOG_SLEEP_MIN
+SLEEP_MAX = WATCHDOG_SLEEP_MAX
+MAX_TARGETS_PER_CYCLE = WATCHDOG_MAX_TARGETS
+MAX_PARALLEL_WORKERS = WATCHDOG_WORKERS
 
 TARGET_BLACKLIST = ['ui', 'spotify', 'gitlab', 'coinbase']
 
 _worker_slot_lock = threading.Lock()
 _worker_slot_idx = 0
 _worker_slot_queue: "queue.Queue[str]" = queue.Queue()
-for _wid in _WORKER_SLOTS:
+for _wid in _WORKER_SLOTS[:MAX_PARALLEL_WORKERS]:
     _worker_slot_queue.put(_wid)
 
 def _acquire_worker_slot() -> str:
     global _worker_slot_idx
+    slots = _WORKER_SLOTS[:MAX_PARALLEL_WORKERS]
     with _worker_slot_lock:
-        slot = _WORKER_SLOTS[_worker_slot_idx % len(_WORKER_SLOTS)]
+        slot = slots[_worker_slot_idx % len(slots)]
         _worker_slot_idx += 1
     return slot
 
@@ -264,7 +271,7 @@ def run_watchdog():
     scanner_module._RECORD_TOOL_TIMES = False
 
     ui_enable_watchdog_mode()
-    ui_log("WATCHDOG", "Modo WATCHDOG PREDADOR ativo. 3 workers paralelos.", Colors.SUCCESS)
+    ui_log("WATCHDOG", f"Modo WATCHDOG PREDADOR ativo. {MAX_PARALLEL_WORKERS} workers paralelos.", Colors.SUCCESS)
 
     while True:
         ui_cycle_started()

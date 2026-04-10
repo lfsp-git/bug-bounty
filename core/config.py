@@ -17,10 +17,39 @@ logger = logging.getLogger(__name__)
 # Scan constants
 # ---------------------------------------------------------------------------
 MAX_SUBS_PER_TARGET: int = 2000
-RATE_LIMIT: int = 100                    # requests/s for tools (subfinder/dnsx/httpx/katana)
-NUCLEI_RATE_LIMIT: int = 150             # requests/s for nuclei (higher throughput OK)
-NUCLEI_CONCURRENCY: int = 50            # parallel templates (4 vCPU → 50 safe)
 REQUESTS_PER_SECOND: float = 1.0        # per-target inter-tool throttle
+
+
+def _detect_ram_gb() -> int:
+    """Best-effort RAM detection from /proc/meminfo (Linux)."""
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    return max(1, kb // (1024 * 1024))
+    except (OSError, ValueError, IndexError):
+        pass
+    return 4
+
+
+CPU_CORES: int = max(1, os.cpu_count() or 1)
+RAM_GB: int = _detect_ram_gb()
+
+# Hardware-aware defaults (optimized for VPS reliability).
+# 4 vCPU / 8 GB profile → RATE_LIMIT=80, NUCLEI_RATE_LIMIT=120, NUCLEI_CONCURRENCY=25
+if CPU_CORES <= 2 or RAM_GB <= 4:
+    RATE_LIMIT: int = 50
+    NUCLEI_RATE_LIMIT: int = 80
+    NUCLEI_CONCURRENCY: int = 15
+elif CPU_CORES <= 4 or RAM_GB <= 8:
+    RATE_LIMIT = 80
+    NUCLEI_RATE_LIMIT = 120
+    NUCLEI_CONCURRENCY = 25
+else:
+    RATE_LIMIT = 100
+    NUCLEI_RATE_LIMIT = 150
+    NUCLEI_CONCURRENCY = 35
 
 # ---------------------------------------------------------------------------
 # Watchdog
@@ -30,6 +59,7 @@ WATCHDOG_SLEEP_MAX: int = 21600   # 6 h
 WATCHDOG_MAX_TARGETS: int = 50
 WATCHDOG_CACHE_TTL: int = 43200   # 12 h
 WATCHDOG_HOT_COUNT: int = 15
+WATCHDOG_WORKERS: int = max(2, min(3, CPU_CORES - 1 if CPU_CORES > 2 else 2))
 
 # ---------------------------------------------------------------------------
 # AI

@@ -71,7 +71,12 @@ Event feed includes `[WID] MODULE message` with semantic coloring:
 - For each cycle:
   - updates cycle counter (`ui_cycle_started()`)
   - fetches + prioritizes targets
-  - dispatches tasks to `ThreadPoolExecutor(max_workers=3)`
+- dispatches tasks to `ThreadPoolExecutor(max_workers=3)`
+
+### Capacity-aware worker sizing
+
+Watchdog workers are now driven by `core/config.py` (`WATCHDOG_WORKERS`) instead of a hardcoded constant.
+Worker-slot queue is initialized with the effective worker count so panel/work assignment stays consistent.
 
 `_scan_target_parallel_wrapper()`:
 
@@ -100,7 +105,21 @@ katana     -list <file> -o <out> -silent -rate-limit=N -timeout 15 -depth 2
 nuclei     -l <file> -o <out> -duc -silent -rl N -c 25 -timeout 5 -severity critical,high,medium [-tags tags]
 ```
 
-## 6. Error observability
+## 6. Hardware-aware runtime tuning
+
+`core/config.py` now derives a runtime profile from:
+
+- CPU cores: `os.cpu_count()`
+- RAM size: `/proc/meminfo` (`MemTotal`)
+
+This profile controls:
+
+- `RATE_LIMIT`
+- `NUCLEI_RATE_LIMIT`
+- `NUCLEI_CONCURRENCY`
+- `WATCHDOG_WORKERS`
+
+## 7. Error observability
 
 - Persistent logs: `logs/hunt3r.log`
 - Runtime snapshots (JSON): `logs/snapshot_<label>_<timestamp>.json`
@@ -109,16 +128,15 @@ nuclei     -l <file> -o <out> -duc -silent -rl N -c 25 -timeout 5 -severity crit
   - active tool states
   - recent activity entries
 
-## 7. Current known limitations
+## 8. Current known limitations
 
 - Platform API coverage in watchdog remains environment-dependent (`bbscope`/credentials)
 - Very small terminals may reduce readability
 - High-volume targets can require tuning nuclei timeout/rate limits
 
-## 8. Validation baseline
+## 9. Validation baseline
 
 Current baseline from repository test suite:
 
 - `python3 -m pytest tests/ -q`
 - Result: **66 passed**, with pre-existing warning set in improvement tests
-

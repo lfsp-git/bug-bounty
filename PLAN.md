@@ -1,35 +1,28 @@
-# Hunt3r Roadmap (Updated)
+# Hunt3r Plan — Runtime Alignment (Refreshed)
 
-## Current delivery status
+## Objective
 
-- FASE 1-8: implemented
-- Watchdog tactical UI: refactored and aligned with parallel execution
-- ML FP filter: integrated as final layer
-- Test baseline: 66 passing
+Align tool execution, watchdog coworkers, and UI throughput with actual VPS capacity while keeping reliability high.
 
-## Delivered milestones
+## Completed in this update
 
-1. Smart nuclei tag detection + tech inference
-2. Performance optimization and timeout tuning
-3. Rich terminal UX foundation
-4. Bounty prioritization strategy
-5. Parallel watchdog execution (3 workers)
-6. Notification routing (Telegram/Discord)
-7. Custom templates
-8. ML false-positive reduction layer
-9. Tactical UI hardening (worker panels, activity telemetry, snapshots)
+1. Hardware-aware runtime tuning added in `core/config.py`.
+2. Watchdog worker count now sourced from config (`WATCHDOG_WORKERS`) instead of hardcoded value.
+3. Worker slot queue now honors effective worker limit.
+4. Legacy pytest warnings fixed in `tests/test_improvements.py` by replacing return-based tests with assertions.
+5. Prompt context updated (`Prompt.md`) to reflect current architecture and VPS profile.
 
-## Operational goals (next cycle)
+## Current operating profile (this VPS)
 
-1. Validate watchdog against real platform APIs with full credentials/tool chain.
-2. Improve large-target resilience (adaptive nuclei timeout/rate).
-3. Expand observability KPIs (tool latency histograms, cycle SLA, drop/error rates).
-4. Optional: expose a lightweight read-only runtime status endpoint.
+- CPU: 4c/4t
+- RAM: 8 GB
+- Workers: 3
+- Core rate limits tuned for balanced throughput vs stability.
 
-## Guardrails
+## Next operational checks
 
-- Keep CLI workflow stable (`main.py`, `--watchdog`, `--dry-run`, `--resume`, `--export`)
-- Preserve backward compatibility in scanner/watchdog integration
-- Treat silent failures as bugs; always surface into logs/snapshots
-- Keep changes test-backed (`python3 -m pytest tests/ -q`)
+1. Run watchdog for extended cycle and compare error/snapshot rates.
+2. Monitor nuclei saturation under high target volume.
+3. Validate API collection path when bbscope is available.
+4. Tune timeouts only if sustained overload appears in logs.
 
