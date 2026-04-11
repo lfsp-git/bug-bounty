@@ -472,6 +472,24 @@ class TestMainImports(unittest.TestCase):
                 importlib.import_module(mod)
 
 
+class TestScannerResultsSnapshot(unittest.TestCase):
+    def test_build_results_snapshot_uses_phase_counts(self):
+        from core.scanner import _build_results_snapshot
+
+        target = {"handle": "example_com", "score": 55}
+        recon_result = {"counts": {"subdomains": 10, "alive": 6, "httpx_urls": 14}}
+        vuln_result = {"counts": {"js_secrets": 3, "findings": 2}}
+        res = _build_results_snapshot(target, recon_result, vuln_result)
+
+        self.assertEqual(res["target"], "example_com")
+        self.assertEqual(res["score"], 55)
+        self.assertEqual(res["subdomains"], 10)
+        self.assertEqual(res["alive"], 6)
+        self.assertEqual(res["endpoints"], 14)
+        self.assertEqual(res["js_secrets"], 3)
+        self.assertEqual(res["vulns"], 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

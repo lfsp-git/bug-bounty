@@ -129,6 +129,29 @@ def _phase_duration(phase_result: Dict[str, Any]) -> float:
         return ended - started
     return 0.0
 
+
+def _build_results_snapshot(
+    target: Dict[str, Any],
+    recon_result: Dict[str, Any],
+    vuln_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build per-mission result metrics from phase results (thread-safe, no shared UI state)."""
+    recon_counts = recon_result.get("counts", {})
+    vuln_counts = vuln_result.get("counts", {})
+    return {
+        "target": target.get("handle", "unknown"),
+        "score": target.get("score", 0),
+        "subdomains": int(recon_counts.get("subdomains", 0) or 0),
+        "alive": int(recon_counts.get("alive", 0) or 0),
+        "endpoints": int(recon_counts.get("httpx_urls", 0) or 0),
+        "js_secrets": int(vuln_counts.get("js_secrets", 0) or 0),
+        "vulns": int(vuln_counts.get("findings", 0) or 0),
+        "phase_results": {
+            "recon": recon_result,
+            "vulnerability": vuln_result,
+        },
+    }
+
 def _count_lines(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as fh:
@@ -686,21 +709,7 @@ Respond only: VALID or INVALID"""
             ui_mission_footer()
             raise
         
-        # Coleta resultados para diff engine (lock protects concurrent live_view reads)
-        with _live_view_lock:
-            results = {
-                'target': self.target.get('handle', 'unknown'),
-                'score': self.target.get('score', 0),
-                'subdomains': _live_view_data["Subfinder"]["subs"],
-                'alive': _live_view_data["DNSX"]["live"],
-                'endpoints': _live_view_data["HTTPX"]["endpoints"],
-                'js_secrets': _live_view_data["JS Hunter"]["secrets"],
-                'vulns': _live_view_data["Nuclei"]["vulns"],
-                'phase_results': {
-                    'recon': recon_result,
-                    'vulnerability': vuln_result,
-                },
-            }
+        results = _build_results_snapshot(self.target, recon_result, vuln_result)
         phase_errors = recon_result.get("errors", []) + vuln_result.get("errors", [])
         results["errors"] = phase_errors
         results["ok"] = not phase_errors
