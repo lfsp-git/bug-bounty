@@ -1,22 +1,53 @@
-http:
-- matchers:
-  - status:
-    - 200
-    - 403
-    type: status
-  method: GET
-  path:
-  - '{{BaseURL}}/debug'
-  - '{{BaseURL}}/actuator'
-  - '{{BaseURL}}/actuator/env'
-  - '{{BaseURL}}/admin'
-  - '{{BaseURL}}/console'
-  - '{{BaseURL}}/__debug__'
-  - '{{BaseURL}}/graphql'
-  - '{{BaseURL}}/graphiql'
 id: hunt3r-debug-endpoints
+
 info:
+  name: Exposed Debug / Admin Endpoints
   author: hunt3r
-  description: Discover debug consoles, actuators, and admin endpoints
-  name: Exposed Debug Endpoints
   severity: high
+  description: Discovers debug consoles, Spring actuators, admin panels, and GraphQL introspection.
+  tags: exposure,misconfig,actuator,panel,hunt3r,info-disclosure
+  reference:
+    - https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator"
+      - "{{BaseURL}}/actuator/env"
+      - "{{BaseURL}}/actuator/heapdump"
+      - "{{BaseURL}}/actuator/logfile"
+      - "{{BaseURL}}/actuator/mappings"
+      - "{{BaseURL}}/actuator/beans"
+      - "{{BaseURL}}/__debug__"
+      - "{{BaseURL}}/debug/pprof"
+      - "{{BaseURL}}/server-status"
+      - "{{BaseURL}}/server-info"
+      - "{{BaseURL}}/phpinfo.php"
+      - "{{BaseURL}}/info.php"
+      - "{{BaseURL}}/admin/config"
+      - "{{BaseURL}}/rails/info/properties"
+      - "{{BaseURL}}/wp-json/wp/v2/users"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200, 206]
+
+      - type: regex
+        condition: or
+        regex:
+          - '"activeProfiles"'
+          - '"systemProperties"'
+          - '"beans":'
+          - '"mappings":'
+          - "phpinfo()"
+          - "PHP Version"
+          - '"id":\s*\d+.*"name":'
+          - "heapUsed"
+          - "Spring Boot"
+
+    extractors:
+      - type: regex
+        regex:
+          - '"activeProfiles":\s*\[([^\]]+)\]'
+          - 'PHP Version\s*([\d.]+)'

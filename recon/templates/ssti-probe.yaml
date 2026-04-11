@@ -1,0 +1,36 @@
+id: hunt3r-ssti-probe
+
+info:
+  name: Server-Side Template Injection Probe
+  author: hunt3r
+  severity: critical
+  description: Probe for SSTI in common input vectors using polyglot payloads (Jinja2/Twig/Freemarker).
+  tags: ssti,rce,hunt3r
+  reference:
+    - https://portswigger.net/research/server-side-template-injection
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/{{7*7}}"
+      - "{{BaseURL}}/?name={{7*7}}"
+      - "{{BaseURL}}/?q={{7*7}}"
+      - "{{BaseURL}}/?search={{7*7}}"
+      - "{{BaseURL}}/?msg=${{7*7}}"
+      - "{{BaseURL}}/?input=#{7*7}"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        words:
+          - "49"
+
+      - type: word
+        negative: true
+        words:
+          - "{{7*7}}"
+          - "${7*7}"
+          - "#{7*7}"

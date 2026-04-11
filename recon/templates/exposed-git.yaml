@@ -1,0 +1,33 @@
+id: hunt3r-exposed-git
+
+info:
+  name: Exposed .git Directory
+  author: hunt3r
+  severity: high
+  description: Detects exposed .git directories that allow full source code disclosure.
+  tags: exposure,misconfig,hunt3r,info-disclosure
+  reference:
+    - https://en.internetwache.org/dont-publicly-expose-git-or-how-we-downloaded-your-websites-source-code-an-analysis-of-alexas-1m-28-07-2015/
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.git/HEAD"
+      - "{{BaseURL}}/.git/config"
+      - "{{BaseURL}}/.git/COMMIT_EDITMSG"
+      - "{{BaseURL}}/.svn/entries"
+      - "{{BaseURL}}/.hg/store/00manifest.i"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: regex
+        condition: or
+        regex:
+          - "^ref: refs/heads/"
+          - "\\[core\\]"
+          - "repositoryformatversion"
+          - "SVN"
+          - "revlog"

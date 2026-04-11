@@ -1,18 +1,43 @@
-http:
-- headers:
-    Origin: https://attacker.com
-  matchers:
-  - part: header
-    regex:
-    - Access-Control-Allow-Origin:\s*\*
-    type: regex
-  method: OPTIONS
-  path:
-  - '{{BaseURL}}/'
-id: hunt3r-cors-misc
+id: hunt3r-cors-misconfig
+
 info:
+  name: CORS Misconfiguration
   author: hunt3r
-  description: Detect overly permissive CORS headers allowing unauthorized cross-origin
-    access
-  name: CORS Misconfiguration Detection
   severity: high
+  description: Detects overly permissive CORS — wildcard origin or reflected arbitrary origin.
+  tags: cors,misconfig,hunt3r
+  reference:
+    - https://portswigger.net/web-security/cors
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/"
+      - "{{BaseURL}}/api/v1/"
+      - "{{BaseURL}}/api/v2/"
+      - "{{BaseURL}}/"
+
+    headers:
+      Origin: "https://evil.com"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: header
+        name: wildcard-cors
+        regex:
+          - "Access-Control-Allow-Origin:\\s*\\*"
+          - "Access-Control-Allow-Credentials:\\s*true"
+
+      - type: word
+        part: header
+        name: reflected-origin
+        words:
+          - "https://evil.com"
+        condition: and
+
+    extractors:
+      - type: regex
+        part: header
+        regex:
+          - "Access-Control-Allow-Origin:[^\r\n]+"

@@ -1,19 +1,39 @@
-http:
-- matchers:
-  - regex:
-    - '(Apache|nginx|Microsoft-IIS)/[0-9.]+ '
-    - 'PHP/[0-9.]+ '
-    - at .*\.java:\d+
-    - Traceback.*File.*line \d+
-    type: regex
-  method: GET
-  path:
-  - '{{BaseURL}}/nonexistent'
-  - '{{BaseURL}}/invalid.php'
-  - '{{BaseURL}}/test.jsp'
 id: hunt3r-info-disclosure
+
 info:
+  name: Server / Stack Trace Information Disclosure
   author: hunt3r
-  description: Detect sensitive info in error pages (versions, paths, stack traces)
-  name: Information Disclosure via Error Messages
   severity: medium
+  description: Detects framework versions, stack traces and internal paths leaked in error pages.
+  tags: info-disclosure,misconfig,hunt3r,exposure
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/nonexistent_hunt3r_probe"
+      - "{{BaseURL}}/..%2F..%2Fetc%2Fpasswd"
+      - "{{BaseURL}}/%00"
+      - "{{BaseURL}}/throw"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        negative: true
+        status: [200]
+
+      - type: regex
+        regex:
+          - "(Apache|nginx|Microsoft-IIS)/[0-9.]+"
+          - "PHP/[0-9.]+"
+          - "at [a-zA-Z0-9_.]+\\.[a-zA-Z0-9_]+\\(.*\\.java:\\d+\\)"
+          - "Traceback \\(most recent call last\\)"
+          - "ActiveRecord::[A-Za-z]+Error"
+          - "RuntimeError.*rails"
+          - "Symfony\\\\Component"
+          - "django\\.core\\.exceptions"
+
+    extractors:
+      - type: regex
+        regex:
+          - "(Apache|nginx|Microsoft-IIS)/([0-9.]+)"
+          - "PHP/([0-9.]+)"

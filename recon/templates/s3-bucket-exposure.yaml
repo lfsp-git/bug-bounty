@@ -1,16 +1,33 @@
-http:
-- matchers:
-  - part: body
-    regex:
-    - https://[a-z0-9-]+\.s3(\.us-west-2)?\.amazonaws\.com
-    - s3\.amazonaws\.com/[a-z0-9-]+
-    type: regex
-  method: GET
-  path:
-  - '{{BaseURL}}/'
 id: hunt3r-s3-exposure
+
 info:
+  name: AWS S3 Bucket Public Reference / Exposure
   author: hunt3r
-  description: Detect publicly accessible S3 buckets referenced in HTML/JS
-  name: AWS S3 Bucket Public Access
-  severity: critical
+  severity: high
+  description: Detects publicly accessible S3 buckets referenced in responses and misconfigured bucket ACLs.
+  tags: exposure,misconfig,hunt3r,info-disclosure
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/index.html"
+      - "{{BaseURL}}/main.js"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: regex
+        part: body
+        regex:
+          - "https?://[a-z0-9.-]+\\.s3(\\.[-a-z0-9]+)?\\.amazonaws\\.com"
+          - "https?://s3(\\.[-a-z0-9]+)?\\.amazonaws\\.com/[a-z0-9._-]+"
+          - "AmazonS3"
+
+    extractors:
+      - type: regex
+        part: body
+        regex:
+          - "https?://[a-z0-9._-]+\\.s3[^\"' ]*"

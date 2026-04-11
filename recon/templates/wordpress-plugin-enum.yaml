@@ -1,20 +1,51 @@
-http:
-- matchers:
-  - status:
-    - 200
-    - 403
-    type: status
-  method: GET
-  path:
-  - '{{BaseURL}}/wp-content/plugins/'
-  - '{{BaseURL}}/wp-content/plugins/akismet/'
-  - '{{BaseURL}}/wp-content/plugins/jetpack/'
-  - '{{BaseURL}}/wp-content/plugins/yoast-seo/'
-  - '{{BaseURL}}/wp-content/plugins/woocommerce/'
-id: hunt3r-wp-plugin-enum
+id: hunt3r-wordpress-enum
+
 info:
+  name: WordPress Plugin/Theme Enumeration & Misconfig
   author: hunt3r
-  description: Detect WordPress plugins and known vulnerabilities via popular plugins
-    list
-  name: WordPress Plugin Enumeration & Vulnerability Detection
   severity: medium
+  description: Enumerate WordPress plugins, themes, and detect common misconfigurations.
+  tags: wordpress,misconfig,exposure,hunt3r
+  reference:
+    - https://wpscan.com/
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-json/wp/v2/users"
+      - "{{BaseURL}}/wp-json/?_jsonp=1"
+      - "{{BaseURL}}/?author=1"
+      - "{{BaseURL}}/xmlrpc.php"
+      - "{{BaseURL}}/wp-content/debug.log"
+      - "{{BaseURL}}/wp-config.php.bak"
+      - "{{BaseURL}}/wp-config.php~"
+
+    stop-at-first-match: false
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        name: user-enum
+        part: body
+        regex:
+          - '"slug":\s*"[^"]{3,}".*"name":'
+          - '"name":\s*"[^"]{2,}".*"link":'
+
+      - type: word
+        name: xmlrpc-enabled
+        words:
+          - "XML-RPC server accepts POST requests only"
+
+      - type: regex
+        name: debug-log
+        part: body
+        regex:
+          - "PHP (Fatal error|Warning|Notice):"
+          - "WordPress database error"
+
+      - type: word
+        name: wp-config-backup
+        words:
+          - "DB_NAME"
+          - "DB_PASSWORD"
+        condition: or

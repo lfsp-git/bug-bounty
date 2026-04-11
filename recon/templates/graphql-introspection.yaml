@@ -1,0 +1,41 @@
+id: hunt3r-graphql-introspection
+
+info:
+  name: GraphQL Introspection Enabled
+  author: hunt3r
+  severity: medium
+  description: Detects GraphQL endpoints with introspection enabled — exposes full schema.
+  tags: graphql,info-disclosure,hunt3r,exposure
+  reference:
+    - https://graphql.org/learn/introspection/
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/graphql"
+      - "{{BaseURL}}/api/graphql"
+      - "{{BaseURL}}/v1/graphql"
+      - "{{BaseURL}}/graphiql"
+      - "{{BaseURL}}/query"
+
+    headers:
+      Content-Type: application/json
+
+    body: '{"query":"{__schema{queryType{name}}}"}'
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "__schema"
+          - "queryType"
+
+    extractors:
+      - type: regex
+        part: body
+        regex:
+          - '"name":\s*"([A-Za-z]+)"'

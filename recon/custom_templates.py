@@ -210,23 +210,22 @@ HUNT3R_CUSTOM_TEMPLATES = {
 def load_custom_templates(template_dir: str = "recon/templates") -> list:
     """
     Load Hunt3r custom templates.
-    If template_dir doesn't exist, creates templates from HUNT3R_CUSTOM_TEMPLATES dict.
-    Returns list of template file paths ready for Nuclei.
+    Priority: hand-crafted YAML files in template_dir take precedence over
+    Python-generated ones from HUNT3R_CUSTOM_TEMPLATES dict.
+    Returns list of template file paths ready for Nuclei (-t flag).
     """
+    import glob as _glob
     os.makedirs(template_dir, exist_ok=True)
-    
-    template_paths = []
+
+    # 1. Write Python-dict templates only if the file doesn't exist yet
     for template_id, template_data in HUNT3R_CUSTOM_TEMPLATES.items():
         template_file = os.path.join(template_dir, f"{template_id}.yaml")
-        
-        # Only write if doesn't exist (avoid overwrites)
         if not os.path.exists(template_file):
             with open(template_file, 'w') as f:
                 yaml.dump(template_data, f, default_flow_style=False, allow_unicode=True)
-        
-        template_paths.append(template_file)
-    
-    return template_paths
+
+    # 2. Return ALL yaml files in directory (includes hand-crafted ones)
+    return sorted(_glob.glob(os.path.join(template_dir, "*.yaml")))
 
 
 def get_custom_template_tags() -> list:

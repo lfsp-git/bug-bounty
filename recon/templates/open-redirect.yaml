@@ -1,0 +1,35 @@
+id: hunt3r-open-redirect
+
+info:
+  name: Open Redirect Detection
+  author: hunt3r
+  severity: medium
+  description: Detects open redirects via common redirect parameters pointing to external hosts.
+  tags: redirect,open-redirect,hunt3r
+  reference:
+    - https://portswigger.net/kb/issues/00500100_open-redirection-reflected
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?redirect=https://evil.com"
+      - "{{BaseURL}}/?url=https://evil.com"
+      - "{{BaseURL}}/?next=https://evil.com"
+      - "{{BaseURL}}/?return=https://evil.com"
+      - "{{BaseURL}}/?returnUrl=https://evil.com"
+      - "{{BaseURL}}/?returnTo=https://evil.com"
+      - "{{BaseURL}}/?continue=https://evil.com"
+      - "{{BaseURL}}/?to=https://evil.com"
+      - "{{BaseURL}}/?goto=https://evil.com"
+      - "{{BaseURL}}/login?next=https://evil.com"
+      - "{{BaseURL}}/logout?redirect=https://evil.com"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [301, 302, 307, 308]
+
+      - type: word
+        part: header
+        words:
+          - "evil.com"
