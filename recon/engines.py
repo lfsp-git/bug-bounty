@@ -1,4 +1,4 @@
-import os, subprocess, shlex, re, io, shutil, sys, threading, json
+import os, subprocess, shlex, re, io, shutil, sys, threading, json, time
 import logging
 from typing import List
 from core.ui import ui_log, Colors
@@ -373,25 +373,33 @@ def run_js_hunter(katana_file, output_file):
     
     from recon.js_hunter import JSHunter
     
+    # Deduplicate JS URLs before scanning (Katana often outputs duplicate lines)
+    seen_urls: set = set()
+    js_urls = []
     with open(katana_file, 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
             url = line.strip()
             if not url:
                 continue
-            if url.endswith(('.js', '.mjs', '.ts')):
-                try:
-                    extracted = JSHunter.scan_url(url)
-                    for secret in extracted:
-                        stype = secret.get('type', 'unknown')
-                        secrets_found.append({
-                            'type': stype,
-                            'value': secret.get('value', ''),
-                            'source': url,
-                            'url': url,
-                            'severity': SECRET_SEVERITY.get(stype, 'low'),
-                        })
-                except Exception as e:
-                    logging.debug(f"Failed to extract secrets from {url}: {e}")
+            if url.endswith(('.js', '.mjs', '.ts')) and url not in seen_urls:
+                seen_urls.add(url)
+                js_urls.append(url)
+
+    for url in js_urls:
+        time.sleep(0.05)  # 20 req/s max per worker — avoid hammering hosts
+        try:
+            extracted = JSHunter.scan_url(url)
+            for secret in extracted:
+                stype = secret.get('type', 'unknown')
+                secrets_found.append({
+                    'type': stype,
+                    'value': secret.get('value', ''),
+                    'source': url,
+                    'url': url,
+                    'severity': SECRET_SEVERITY.get(stype, 'low'),
+                })
+        except Exception as e:
+            logging.debug(f"Failed to extract secrets from {url}: {e}")
     
     # Write results as JSONL (compatible with notifier + reporter)
     with open(output_file, 'w', encoding='utf-8') as f:
