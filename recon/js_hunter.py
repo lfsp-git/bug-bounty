@@ -27,15 +27,28 @@ class JSHunter:
         '/cdn-cgi/', '/wp-content/themes/', '/wp-includes/',
         'developer.mozilla.org', 'cdnjs.cloudflare.com',
         'unpkg.com', 'cdn.jsdelivr.net', 'stackpath.bootstrapcdn.com',
+        # CDN/library/3rd-party public service URLs — never secrets
+        'github.com', 'gitlab.com', 'bitbucket.org',
+        'reactrouter.com', 'react.dev', 'vuejs.org', 'angular.io',
+        'optimizely.com', 'segment.com', 'amplitude.com', 'mixpanel.com',
+        'js.stripe.com', 'stripe.com/v3',
+        'recaptcha', 'google.com/recaptcha', 'google-analytics.com',
+        'googletagmanager.com',
+        'sentry.io', 'rollbar.com', 'bugsnag.com',
+        'intercom.io', 'zendesk.com', 'freshdesk.com',
+        'cloudfront.net', 'azureedge.net',
+        'outgrow.co', 'outgrow.com',
+        'countrystatecity.in',
+        'airtable.com/v0.3', 'airtable.com/developers',
     ]
 
     PATTERNS = {
         'aws_access_key': re.compile(r'(?:AKIA|ABIA|ACCA|ASIA)[A-Z0-9]{16}'),
         'aws_secret_key': re.compile(r'(?i)aws[_-]?secret[_-]?(?:access)?[_-]?key["\'\s:=]+([A-Za-z0-9/+=]{40})'),
-        'generic_api_key': re.compile(r'(?i)(?:api[_-]?key|apikey)\s*[:=]\s*["\']([A-Za-z0-9_\-]{16,})["\']'),
-        'auth_token': re.compile(r'(?i)(?:auth|access|bearer)\s*(?:token)?\s*[:=]\s*["\']([A-Za-z0-9_\-.]{20,})["\']'),
+        'generic_api_key': re.compile(r'(?i)(?:api[_-]?key|apikey)\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']'),
+        'auth_token': re.compile(r'(?i)(?:auth|access|bearer)\s*(?:token)?\s*[:=]\s*["\']([A-Za-z0-9_\-.]{32,})["\']'),
         'private_key': re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'),
-        'password_or_secret': re.compile(r'(?i)(?:password|passwd|secret|secret_key|signing_key)\s*[:=]\s*["\']([^"\']{4,})["\']'),
+        'password_or_secret': re.compile(r'(?i)(?:password|passwd|secret_key|signing_key)\s*[:=]\s*["\']([^"\']{8,})["\']'),
         'slack_webhook': re.compile(r'https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+'),
         'discord_webhook': re.compile(r'https://(?:canary\.|ptb\.)?discord\.com/api/webhooks/\d+/[A-Za-z0-9_-]+'),
         'interactsh': re.compile(r'https?://[A-Za-z0-9_-]+\.interact\.sh'),
@@ -59,6 +72,68 @@ class JSHunter:
         """Return True if value matches documentation/noise URLs."""
         vl = value.lower()
         return any(n in vl for n in cls.NOISE_BLACKLIST)
+
+    # FP patterns (class-level to avoid re-compiling per call)
+    _FP_PASSWORD_VALUE = re.compile(
+        r'^(?:'
+        r'/[a-zA-Z0-9/_\-]*'
+        r'|%[a-z_]+%'
+        r'|(?:password|secret|token|key|placeholder|hint|enter|'
+        r'forgot(?:_?password)?|change.?password|reset.?password|'
+        r'current.?password|missing|incorrect|invalid|required|'
+        r'confirm(?:_?password)?|new(?:_?password)?|old(?:_?password)?)'
+        r'|[A-Z][a-zA-Z]+(?:Password|Secret|Token|Key)'
+        r')$',
+        re.IGNORECASE,
+    )
+
+    _CDN_URL_DOMAINS = re.compile(
+        r'(?:github\.com|gitlab\.com|reactrouter\.com|optimizely\.com|'
+        r'segment\.com|js\.stripe\.com|stripe\.com/v3|'
+        r'google\.com|googleapis\.com|sentry\.io|rollbar\.com|'
+        r'intercom\.io|cloudfront\.net|azureedge\.net|'
+        r'outgrow\.co|outgrow\.com|countrystatecity\.in|'
+        r'airtable\.com/v0|airtable\.com/developers)',
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _is_fp(cls, pattern_name: str, captured: str) -> bool:
+        """Return True if this match is a deterministic false positive."""
+        val = captured.strip().strip('"\'`')
+
+        if pattern_name == 'password_or_secret':
+            if cls._FP_PASSWORD_VALUE.match(val):
+                return True
+            if val.startswith('/') or val.startswith('http'):
+                return True
+            # CamelCase single word = React component / route name
+            if re.match(r'^[A-Z][a-zA-Z]+$', val) and len(val) < 40:
+                return True
+            # snake_case identifier = i18n/translation key (e.g. current_password_missing)
+            if re.match(r'^[a-z][a-z0-9_]*$', val) and len(val) < 60:
+                return True
+            # camelCase identifier without digits = JS variable name
+            if re.match(r'^[a-z][a-zA-Z]+$', val) and len(val) < 40:
+                return True
+
+        elif pattern_name == 'auth_token':
+            if re.match(r'^[a-z][a-z0-9_]*$', val) or len(val) < 32:
+                return True
+
+        elif pattern_name == 'generic_url_param':
+            if cls._CDN_URL_DOMAINS.search(val):
+                return True
+            if '?' not in val and not re.search(
+                r'(?:token|key|secret|auth|api_?key|password)=', val, re.I
+            ):
+                return True
+
+        elif pattern_name == 'generic_api_key':
+            if not re.search(r'\d', val):
+                return True
+
+        return False
 
     @classmethod
     def scan_url(cls, url, timeout=30):
@@ -93,22 +168,28 @@ class JSHunter:
     def _scan_content(cls, content, source):
         """Extract all pattern matches from raw JS content."""
         findings = []
-        seen = set()
+        seen = set()  # dedup by (type, captured_value)
 
         for pattern_name, regex in cls.PATTERNS.items():
             for match in regex.finditer(content):
-                val = match.group(0).strip()
-                if val in seen:
+                raw = match.group(0).strip()
+                captured = match.group(1).strip() if match.lastindex else raw
+
+                if len(raw) > 500:
                     continue
-                if len(val) > 500:
+                if cls._is_noisy(raw):
                     continue
-                # Noise filter: skip doc/example URLs
-                if cls._is_noisy(val):
+                if cls._is_fp(pattern_name, captured):
                     continue
-                seen.add(val)
+
+                dedup_key = (pattern_name, captured[:100])
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+
                 findings.append({
                     'type': pattern_name,
-                    'value': val[:200],
+                    'value': raw[:200],
                     'source': source,
                     'url': source if source.startswith('http') else '',
                 })
