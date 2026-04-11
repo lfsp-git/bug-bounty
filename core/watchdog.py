@@ -34,6 +34,7 @@ from core.ui import (
     set_worker_context, _WORKER_SLOTS, ui_interrupt_requested,
 )
 from core.intel import AIClient, IntelMiner, score_watchdog_target
+from core.notifier import NotificationDispatcher
 
 GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
 SCAN_HISTORY_FILE = "recon/baselines/target_scan_history.txt"
@@ -347,7 +348,9 @@ def run_watchdog():
     ui_enable_watchdog_mode()
     ui_log("WATCHDOG", f"Modo WATCHDOG PREDADOR ativo. {MAX_PARALLEL_WORKERS} workers paralelos.", Colors.SUCCESS)
 
+    _cycle_num = 0
     while not ui_interrupt_requested():
+        _cycle_num += 1
         ui_cycle_started()
         ts = datetime.now().strftime('%H:%M')
         ui_log("WATCHDOG", f"=== CICLO {ts} ===", Colors.BOLD)
@@ -400,10 +403,27 @@ def run_watchdog():
                 )
         else:
             cycle_metrics = {"targets": 0, "changed": 0, "errors": 0}
+            avg_recon = 0.0
+            avg_vuln = 0.0
 
         secs = _compute_next_sleep_seconds(cycle_metrics)
         wake = (datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')
-        ui_log("WATCHDOG", f"Dormindo ate {wake} ({secs//3600}h{(secs%3600)//60}m)", Colors.DIM)
+        next_cycle_label = f"{secs//3600}h{(secs%3600)//60}m"
+        ui_log("WATCHDOG", f"Dormindo ate {wake} ({next_cycle_label})", Colors.DIM)
+
+        # Discord heartbeat — rain-check after each cycle
+        try:
+            NotificationDispatcher.alert_watchdog_heartbeat(
+                cycle=_cycle_num,
+                targets_scanned=cycle_metrics.get("targets", 0),
+                errors=cycle_metrics.get("errors", 0),
+                avg_recon_s=avg_recon,
+                avg_vuln_s=avg_vuln,
+                next_cycle_in=next_cycle_label,
+            )
+        except Exception as _hb_err:
+            logging.debug(f"Heartbeat Discord falhou: {_hb_err}")
+
         for _ in range(secs):
             if ui_interrupt_requested():
                 ui_log("WATCHDOG", "Interrupcao durante sleep. Encerrando...", Colors.WARNING)
