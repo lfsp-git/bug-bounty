@@ -75,6 +75,30 @@ def _load_env() -> None:
             logger.warning(f"Env var {key} looks like a placeholder — did you fill in .env?")
 
 
+def _ensure_nuclei_templates() -> None:
+    """Guarantee Nuclei templates exist before starting the watchdog.
+
+    The watchdog may start before ToolUpdater's scheduled update window.
+    This function blocks until templates are present (or the download fails).
+    """
+    import subprocess
+    from recon.tool_discovery import find_tool
+    td = os.path.expanduser("~/nuclei-templates")
+    if os.path.isdir(td) and any(True for _ in os.scandir(td)):
+        return  # already present
+    ui_log("SYSTEM", "Templates Nuclei ausentes — baixando antes de iniciar watchdog...", Colors.WARNING)
+    try:
+        exe = find_tool("nuclei")
+        subprocess.run([exe, "-update-templates"], timeout=300,
+                       capture_output=True, check=False)
+        if os.path.isdir(td):
+            ui_log("SYSTEM", "Templates Nuclei prontos.", Colors.SUCCESS)
+        else:
+            ui_log("SYSTEM", "Falha ao baixar templates. Nuclei pode ter 0 resultados.", Colors.ERROR)
+    except Exception as e:
+        logger.error(f"nuclei -update-templates failed: {e}")
+
+
 def init_seq() -> None:
     ui_log("SYSTEM", "Verificando ferramentas...", Colors.PRIMARY)
     try:
@@ -241,6 +265,7 @@ def main() -> None:
 
     if args.watchdog:
         ui_clear()
+        _ensure_nuclei_templates()
         from core.watchdog import run_watchdog
         run_watchdog()
         return

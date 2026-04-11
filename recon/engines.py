@@ -148,9 +148,26 @@ def run_httpx(input_file, output_file, rate_limit=100):
     run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-rate-limit", str(rate_limit)], "HTTPX", output_file)
 
 def run_katana_surgical(input_file, output_file, rate_limit=100):
-    """Crawling com URLs do HTTPX. -timeout limita por-request para evitar travamentos."""
+    """Crawling com URLs do HTTPX.
+
+    Timeout adaptativo: 300s para ≤30 URLs, +6s por URL adicional,
+    máx 900s — evita timeout em alvos grandes sem travar para sempre.
+    """
+    endpoint_count = 0
+    if os.path.exists(input_file):
+        try:
+            with open(input_file) as _f:
+                endpoint_count = sum(1 for l in _f if l.strip())
+        except OSError:
+            pass
+
+    base_timeout = 300
+    per_url_extra = max(0, endpoint_count - 30) * 6
+    adaptive_timeout = min(base_timeout + per_url_extra, 900)
+
     cmd = [find_tool("katana"), "-list", input_file, "-o", output_file, "-silent",
-           f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2"]
+           f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2",
+           "-crawl-duration", str(adaptive_timeout)]
     run_cmd(cmd, "Katana", output_file)
 
 def run_nuclei(

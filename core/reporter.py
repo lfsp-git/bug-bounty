@@ -58,13 +58,28 @@ class BugBountyReporter:
         return findings
 
     def load_js_secrets(self, js_secrets_path: str) -> List[str]:
-        """Load raw lines from JS secrets file."""
+        """Load and deduplicate JS secrets by (type, value, source) fingerprint."""
         secrets: List[str] = []
         if not js_secrets_path or not os.path.exists(js_secrets_path):
             return secrets
         try:
+            seen: set = set()
             with open(js_secrets_path, 'r', encoding='utf-8', errors='ignore') as f:
-                secrets = [l.strip() for l in f if l.strip()]
+                for line in f:
+                    raw = line.strip()
+                    if not raw:
+                        continue
+                    # Deduplicate by fingerprint: try JSON parse for type+value+source,
+                    # fall back to raw string hash for plain-text entries.
+                    try:
+                        import json as _json
+                        obj = _json.loads(raw)
+                        fp = (obj.get("type", ""), obj.get("value", ""), obj.get("source", ""))
+                    except Exception:
+                        fp = raw
+                    if fp not in seen:
+                        seen.add(fp)
+                        secrets.append(raw)
         except OSError as e:
             logger.error(f"Cannot read JS secrets file: {e}")
         return secrets
