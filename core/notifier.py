@@ -18,6 +18,11 @@ from core.config import (
 )
 
 
+def _get_sev(finding: dict, default: str = "info") -> str:
+    """Extract severity, checking top-level then info.severity for nuclei v2/v3 compat."""
+    return (finding.get("severity") or finding.get("info", {}).get("severity", default)).lower()
+
+
 class NotifierConfig:
     """ENV vars loaded once at runtime."""
 
@@ -193,7 +198,7 @@ class NotificationDispatcher:
             return
 
         for d in findings:
-            sev = d.get("severity", "info").upper()
+            sev = _get_sev(d, "info").upper()
             tid = d.get("template-id", "unknown")
             matched = d.get("matched-at", "")
             cve = d.get("cve-id", "N/A")
@@ -238,7 +243,7 @@ class NotificationDispatcher:
         # Build a summary table (max 15 entries to avoid embed overflow)
         entries = []
         for d in findings[:15]:
-            sev = d.get("severity", "?").upper()
+            sev = _get_sev(d, "?").upper()
             tid = d.get("template-id", "unknown")
             matched = d.get("matched-at", "")[:50]
             entries.append(f"`[{sev:>8}]` {tid} — `{matched}`")
@@ -282,7 +287,7 @@ class NotificationDispatcher:
                     except json.JSONDecodeError:
                         continue
 
-                    sev = d.get("severity", "info").upper()
+                    sev = _get_sev(d, "info").upper()
                     tid = d.get("template-id", "unknown")
                     matched = d.get("matched-at", "")
                     cve = d.get("cve-id", "N/A")
