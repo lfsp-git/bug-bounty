@@ -7,4 +7,9 @@ httpx
 pydantic
 pydantic-settings
 tldextract
-richlightgbm>=3.3.0
+rich
+PyYAML
+openpyxl
+numpy
+lightgbm>=3.3.0
+scikit-learn
