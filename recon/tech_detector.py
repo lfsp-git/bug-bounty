@@ -241,10 +241,17 @@ class TechDetector:
             'info-disclosure', 'token-leak', 'jwt', 'oauth', 'actuator', 'webdav',
             'path-traversal', 'open-redirect', 'nosql', 'injection', 'hardcoded',
             'secret-exposure', 'wp-plugin', 'wp-theme',
+            # Additional high-value tags
+            'default-login', 'network', 'dns', 'ssl', 'tls', 'osint', 'headless',
+            'code', 'dast', 'fuzzing', 'enum', 'recon', 'introspection',
+            'prototype-pollution', 'deserialization', 'upload', 'traversal',
+            'cache-poisoning', 'request-smuggling', 'race-condition',
             # Tech tags
             'wordpress', 'apache', 'nginx', 'php', 'java', 'spring', 'tomcat', 'drupal',
             'joomla', 'laravel', 'django', 'rails', 'graphql', 'iis', 'asp', 'aspx',
             'mysql', 'mssql', 'postgres', 'mongodb', 'nodejs', 'javascript',
+            'redis', 'elasticsearch', 'jenkins', 'gitlab', 'confluence', 'jira',
+            'struts', 'log4shell', 'zimbra', 'citrix', 'vmware', 'exchange',
         }
 
         # Map invalid/legacy tags used internally → valid Nuclei equivalents
@@ -280,11 +287,12 @@ class TechDetector:
         for priority in sorted(tags_by_priority.keys()):
             final_tags.extend(tags_by_priority[priority])
         
-        # Add generic vulns if not present
-        if 'cve' not in final_tags:
-            final_tags.insert(0, 'cve')
-        if 'misconfig' not in final_tags:
-            final_tags.append('misconfig')
+        # Always include the core high-value generic categories
+        _ALWAYS_INCLUDE = ['cve', 'misconfig', 'exposure', 'default-credentials', 'auth-bypass',
+                           'info-disclosure', 'takeover']
+        for t in _ALWAYS_INCLUDE:
+            if t not in final_tags:
+                final_tags.append(t)
         
         # Remove duplicates, preserve order
         final_tags = list(dict.fromkeys(final_tags))
@@ -295,10 +303,13 @@ class TechDetector:
             resolved = TAG_ALIASES.get(tag, tag)
             if resolved in VALID_NUCLEI_TAGS:
                 validated.append(resolved)
-        final_tags = list(dict.fromkeys(validated)) or ['cve', 'misconfig', 'takeover']
+        final_tags = list(dict.fromkeys(validated)) or [
+            'cve', 'misconfig', 'exposure', 'takeover', 'default-credentials',
+            'auth-bypass', 'info-disclosure',
+        ]
         
         # Limit to reasonable number (Nuclei can handle 20-30 tags)
-        final_tags = final_tags[:25]
+        final_tags = final_tags[:30]
         
         tag_string = ','.join(final_tags)
         

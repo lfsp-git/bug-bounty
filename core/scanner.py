@@ -708,8 +708,12 @@ class MissionRunner:
         except Exception as e:
             logging.warning(f"Tech detection failed: {e}")
         
-        # Fallback to default tags if detection fails
-        return "cve,misconfig,takeover"
+        # Broad fallback: covers the highest-value vuln classes when tech detection yields nothing
+        return (
+            "cve,misconfig,exposure,takeover,default-credentials,auth-bypass,"
+            "sqli,xss,ssrf,rce,lfi,xxe,idor,ssti,cors,open-redirect,"
+            "info-disclosure,file-upload,redirect"
+        )
 
     def _notify_and_report(self, paths: dict, results: dict):
         """Send notifications and generate bug bounty report after scan."""

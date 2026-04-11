@@ -271,9 +271,9 @@ def run_nuclei(
     if tags:
         cmd.extend(["-tags", tags])
     if custom_templates:
-        # Add custom template directories/files
+        # -t: template files or directories to run (not -td which means template-display)
         for template_path in custom_templates:
-            cmd.extend(["-td", template_path])
+            cmd.extend(["-t", template_path])
 
     timeout = int(timeout_override) if isinstance(timeout_override, (int, float)) and timeout_override > 0 else get_tool_timeout("nuclei")
 
@@ -281,6 +281,15 @@ def run_nuclei(
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                 text=True, bufsize=1)
+
+        # Nuclei banner lines to suppress from logs (ASCII art + boilerplate)
+        _BANNER_SKIP = re.compile(
+            r'^\s*(?:__|____|\s*/\s*|\\|_/|nuclei.*v[\d.]+|projectdiscovery\.io|'
+            r'Use.*flag.*for.*help|Could not|Warning|Warn:)',
+            re.IGNORECASE,
+        )
+        _ERROR_KW = ('error', 'fail', 'fatal', 'panic', 'could not', 'unable', 'denied',
+                     'refused', 'exception', 'invalid', 'not found')
 
         def _read_stderr():
             stderr = proc.stderr
@@ -299,8 +308,13 @@ def run_nuclei(
                         except (json.JSONDecodeError, ValueError):
                             pass
                     else:
-                        # Log non-JSON lines (errors, template loading, etc.)
-                        logging.info(f"Nuclei: {line[:200]}")
+                        # Only log actionable lines (errors/warnings) — suppress banner/boilerplate
+                        if not _BANNER_SKIP.match(line):
+                            ll = line.lower()
+                            if any(kw in ll for kw in _ERROR_KW):
+                                logging.warning(f"Nuclei: {line[:200]}")
+                            else:
+                                logging.debug(f"Nuclei: {line[:200]}")
             except (OSError, ValueError):
                 pass
             finally:
