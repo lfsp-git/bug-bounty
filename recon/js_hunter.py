@@ -11,6 +11,8 @@ import time
 import logging
 import json
 from urllib.parse import urlparse
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class JSHunter:
@@ -161,7 +163,7 @@ class JSHunter:
             return []
         try:
             import requests
-            resp = requests.get(url, timeout=timeout, allow_redirects=True,
+            resp = requests.get(url, timeout=timeout, allow_redirects=True, verify=False,
                                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
             if resp.status_code >= 400:
                 return []

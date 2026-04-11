@@ -380,13 +380,25 @@ class MissionRunner:
 
         # HTTPX
         httpx_file = paths["live"] + ".httpx"
+        # Guard: truncate large DNSX outputs before HTTPX to avoid timeout
+        httpx_input = live_file
+        live_count = count_lines(live_file) if os.path.exists(live_file) else 0
+        if live_count > MAX_SUBS_PER_TARGET:
+            ui_log("GUARD", f"Alvo grande ({live_count} hosts). Truncando para HTTPX", Colors.WARNING)
+            logging.warning(f"Pre-HTTPX truncation for {self.target.get('handle', 'unknown')}: {live_count} → {MAX_SUBS_PER_TARGET}")
+            httpx_input = live_file + ".httpx_guard"
+            with open(live_file, 'r') as _f, open(httpx_input, 'w') as _o:
+                for _i, _l in enumerate(_f):
+                    if _i >= MAX_SUBS_PER_TARGET:
+                        break
+                    _o.write(_l)
         if _is_cache_valid(httpx_file):
             ui_log("HTTPX", f"[Cache] {_count_lines(httpx_file)} endpoints", Colors.DIM)
             _tool_cached("HTTPX", "endpoints", httpx_file)
         else:
             limiter.wait_and_record(self.target.get('handle', 'unknown'))
-            _tool_start("HTTPX", input_count=count_lines(live_file))
-            ok = _run_with_progress("HTTPX", lambda: run_httpx(live_file, httpx_file, rate_limit=RATE_LIMIT))
+            _tool_start("HTTPX", input_count=count_lines(httpx_input))
+            ok = _run_with_progress("HTTPX", lambda: run_httpx(httpx_input, httpx_file, rate_limit=RATE_LIMIT))
             if ok:
                 _tool_done("HTTPX", "endpoints", httpx_file)
             else:

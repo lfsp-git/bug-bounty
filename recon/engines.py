@@ -20,7 +20,7 @@ def apply_sniper_filter(inp, outp):
     with open(outp, 'w', encoding='utf-8') as f: f.write('\n'.join(juicy))
     return outp
 
-def run_cmd(cmd_list, label, outp, stats_pipe=None):
+def run_cmd(cmd_list, label, outp, stats_pipe=None, timeout_override=None):
     """Execute external command safely.
     Skips execution in non-interactive environments (no TERM or not a TTY) and if binary missing.
     Creates an empty output file to keep pipeline functional.
@@ -57,9 +57,10 @@ def run_cmd(cmd_list, label, outp, stats_pipe=None):
     open(outp, 'w').close()
     try:
         # Use timeout from centralized config
-        subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False, timeout=get_tool_timeout(label))
+        effective_timeout = timeout_override if timeout_override is not None else get_tool_timeout(label)
+        subprocess.run(cmd_list, stdout=subprocess.DEVNULL, stderr=stderr_dest, check=False, timeout=effective_timeout)
     except subprocess.TimeoutExpired:
-        ui_log("ENGINE_WARN", f"Timeout executing {label} after {get_tool_timeout(label)}s. Skipping.", Colors.WARNING)
+        ui_log("ENGINE_WARN", f"Timeout executing {label} after {effective_timeout}s. Skipping.", Colors.WARNING)
     except Exception as e:
         ui_log("ENGINE_ERR", f"Falha em {label}: {str(e)[:50]}", Colors.ERROR)
     finally:
@@ -171,8 +172,17 @@ def run_uncover(domains, output_file):
     run_cmd(cmd, "Uncover", output_file)
 
 def run_httpx(input_file, output_file, rate_limit=100):
+    # Adaptive timeout: base 180s + 0.5s per host above 100, max 900s
+    host_count = 0
+    if os.path.exists(input_file):
+        try:
+            with open(input_file) as _f:
+                host_count = sum(1 for l in _f if l.strip())
+        except OSError:
+            pass
+    adaptive_timeout = min(180 + max(0, host_count - 100) // 2, 900)
     # -random-agent is default true; -ua is not a valid flag (caused 0-second silent exit)
-    run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-rate-limit", str(rate_limit)], "HTTPX", output_file)
+    run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-rate-limit", str(rate_limit)], "HTTPX", output_file, timeout_override=adaptive_timeout)
 
 def run_katana_surgical(input_file, output_file, rate_limit=100):
     """Crawling com URLs do HTTPX.
