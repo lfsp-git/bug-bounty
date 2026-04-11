@@ -160,27 +160,33 @@ def _load_targets_from_history():
         return []
 
 def _normalize_target_domain(raw: str) -> list:
-    """Normalize a raw bbscope target string into a list of clean domains.
+    """Normalize a raw bbscope target string into a list of clean domains or IPs.
     
-    Handles: *.domain.com, https://domain.com/path/*, domain.*, comma-separated lists.
+    Handles: *.domain.com, https://domain.com/path/*, domain.*, comma-separated lists,
+    IPv4, IPv6, CIDR blocks.
     Returns [] for unparseable or too-broad patterns.
     """
     import re as _re
+    from core.config import is_ip_target, expand_cidr
     raw = raw.lower().strip()
     if not raw:
         return []
-    # Split comma-separated domains first
+    # Split comma-separated entries first
     parts = [p.strip() for p in raw.split(',') if p.strip()]
     result = []
     for part in parts:
         # Strip protocol
         part = _re.sub(r'^https?://', '', part)
-        # Strip path/query/fragment (anything after first / or ? or #)
+        # Strip path/query/fragment
         part = _re.sub(r'[/?#].*$', '', part)
         # Strip port
         part = _re.sub(r':\d+$', '', part)
         part = part.strip()
         if not part:
+            continue
+        # IP / CIDR — accept as-is (expand later if needed)
+        if is_ip_target(part):
+            result.extend(expand_cidr(part))
             continue
         # TLD wildcard like "domain.*" — too broad, skip
         if part.endswith('.*'):

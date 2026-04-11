@@ -214,7 +214,7 @@ class PlatformManager:
 
 def load_custom_targets() -> List[Dict]:
     """Carrega alvos do alvos.txt usando parsing seguro de URL."""
-    from core.config import validate_and_extract_domain
+    from core.config import validate_and_extract_domain, is_ip_target, expand_cidr
     from core.ui import ui_log, Colors
     
     t = []
@@ -227,7 +227,21 @@ def load_custom_targets() -> List[Dict]:
                 raw = l.strip()
                 if not raw or raw.startswith('#'): continue
                 
-                # Validate input
+                # IP / CIDR support
+                if is_ip_target(raw):
+                    ips = expand_cidr(raw)
+                    safe_handle = sanitize_input(raw).replace('.', '_').replace('/', '_').replace(':', '_')
+                    t.append({
+                        'domain': raw,
+                        'domains': ips,
+                        'handle': safe_handle,
+                        'platform': 'custom',
+                        'score': 30,
+                        'scope_type': 'ip',
+                    })
+                    continue
+
+                # Validate domain input
                 domain = validate_and_extract_domain(raw)
                 if not domain:
                     ui_log("TARGETS", f"Pulando entrada invalida: {raw}", Colors.WARNING)

@@ -4,6 +4,7 @@ Single source of truth for all runtime settings.
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import time
@@ -206,6 +207,32 @@ def is_valid_url(url: str) -> bool:
 def sanitize_domain(domain: str) -> str:
     """Strip whitespace and lowercase a domain string."""
     return domain.strip().lower()
+
+
+def is_ip_target(s: str) -> bool:
+    """Return True if s is an IPv4, IPv6 address or CIDR block."""
+    try:
+        ipaddress.ip_address(s)
+        return True
+    except ValueError:
+        pass
+    try:
+        ipaddress.ip_network(s, strict=False)
+        return True
+    except ValueError:
+        return False
+
+
+def expand_cidr(s: str) -> List[str]:
+    """Expand CIDR to individual IP strings. Returns [s] if s is a single IP."""
+    try:
+        net = ipaddress.ip_network(s, strict=False)
+        # Cap expansion at /16 (65536) to avoid memory issues
+        if net.num_addresses > 65536:
+            raise ValueError(f"CIDR {s} too large ({net.num_addresses} IPs), max /16")
+        return [str(ip) for ip in net.hosts()] or [str(net.network_address)]
+    except ValueError:
+        return [s]
 
 
 def validate_and_extract_domain(input_str: str) -> str:

@@ -328,57 +328,82 @@ class MissionRunner:
                 f.write(d + '\n')
 
         limiter = get_rate_limiter(REQUESTS_PER_SECOND)
+        is_ip_mode = self.target.get('scope_type') == 'ip'
 
-        # Subfinder
-        sub_file = paths["sub"]
-        if _is_cache_valid(sub_file):
-            ui_log("Subfinder", f"[Cache] {_count_lines(sub_file)} subs", Colors.DIM)
-            _tool_cached("Subfinder", "subs", sub_file)
+        if is_ip_mode:
+            # IP/CIDR targets: skip Subfinder/DNSX/Uncover entirely.
+            # IPs are already expanded in 'domains'; write them directly to live_file.
+            sub_file = paths["sub"]
+            live_file = paths["live"]
+            unv_file = paths["unv"]
+            import shutil
+            shutil.copy(dom_file, sub_file)
+            shutil.copy(dom_file, live_file)
+            open(unv_file, 'w').close()
+            ui_log("RECON", f"Modo IP: pulando Subfinder/DNSX/Uncover ({count_lines(dom_file)} IPs)", Colors.INFO)
         else:
-            limiter.wait_and_record(self.target.get('handle', 'unknown'))
-            _tool_start("Subfinder", input_count=count_lines(dom_file))
-            ok = _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
-            if ok:
-                _tool_done("Subfinder", "subs", sub_file)
-            else:
-                _tool_error("Subfinder")
-                phase_result["ok"] = False
-                phase_result["errors"].append("Subfinder failed")
+            sub_file = paths["sub"]
+            live_file = paths["live"]
+            unv_file = paths["unv"]
 
-        # DNSX
-        live_file = paths["live"]
-        unv_file = paths["unv"]
-        if _is_cache_valid(live_file):
-            ui_log("DNSX", f"[Cache] {_count_lines(live_file)} live", Colors.DIM)
-            _tool_cached("DNSX", "live", live_file)
-        else:
-            limiter.wait_and_record(self.target.get('handle', 'unknown'))
-            _tool_start("DNSX", input_count=count_lines(sub_file))
-            ok = _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
-            if ok:
-                _tool_done("DNSX", "live", live_file)
+            # Subfinder
+            if _is_cache_valid(sub_file):
+                ui_log("Subfinder", f"[Cache] {_count_lines(sub_file)} subs", Colors.DIM)
+                _tool_cached("Subfinder", "subs", sub_file)
             else:
-                _tool_error("DNSX")
-                phase_result["ok"] = False
-                phase_result["errors"].append("DNSX failed")
+                limiter.wait_and_record(self.target.get('handle', 'unknown'))
+                _tool_start("Subfinder", input_count=count_lines(dom_file))
+                ok = _run_with_progress("Subfinder", lambda: run_subfinder(dom_file, sub_file, rate_limit=RATE_LIMIT))
+                if ok:
+                    _tool_done("Subfinder", "subs", sub_file)
+                else:
+                    _tool_error("Subfinder")
+                    phase_result["ok"] = False
+                    phase_result["errors"].append("Subfinder failed")
 
-        # Uncover
+            # DNSX
+            if _is_cache_valid(live_file):
+                ui_log("DNSX", f"[Cache] {_count_lines(live_file)} live", Colors.DIM)
+                _tool_cached("DNSX", "live", live_file)
+            else:
+                limiter.wait_and_record(self.target.get('handle', 'unknown'))
+                _tool_start("DNSX", input_count=count_lines(sub_file))
+                ok = _run_with_progress("DNSX", lambda: run_dnsx(sub_file, live_file, rate_limit=RATE_LIMIT))
+                if ok:
+                    _tool_done("DNSX", "live", live_file)
+                else:
+                    _tool_error("DNSX")
+                    phase_result["ok"] = False
+                    phase_result["errors"].append("DNSX failed")
+
+            # Uncover
+            uncover_file = paths["sub"] + ".uncover"
+            if _is_cache_valid(uncover_file):
+                ui_log("Uncover", f"[Cache] {_count_lines(uncover_file)} takeovers", Colors.DIM)
+                _tool_cached("Uncover", "takeovers", uncover_file)
+            else:
+                limiter.wait_and_record(self.target.get('handle', 'unknown'))
+                _tool_start("Uncover")
+                ok = _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
+                if ok:
+                    _tool_done("Uncover", "takeovers", uncover_file)
+                else:
+                    _tool_error("Uncover")
+                    phase_result["ok"] = False
+                    phase_result["errors"].append("Uncover failed")
+
+            # Calcular não resolvidos
+            if os.path.exists(sub_file) and os.path.exists(live_file):
+                with open(sub_file, 'r') as f_sub, open(live_file, 'r') as f_live:
+                    subs = set(line.strip() for line in f_sub if line.strip())
+                    lives = set(line.strip() for line in f_live if line.strip())
+                unv = subs - lives
+                with open(unv_file, 'w') as f_unv:
+                    for u in unv:
+                        f_unv.write(u + '\n')
+
+        # --- HTTPX (common path for both domain and IP modes) ---
         uncover_file = paths["sub"] + ".uncover"
-        if _is_cache_valid(uncover_file):
-            ui_log("Uncover", f"[Cache] {_count_lines(uncover_file)} takeovers", Colors.DIM)
-            _tool_cached("Uncover", "takeovers", uncover_file)
-        else:
-            limiter.wait_and_record(self.target.get('handle', 'unknown'))
-            _tool_start("Uncover")
-            ok = _run_with_progress("Uncover", lambda: run_uncover(domains, uncover_file))
-            if ok:
-                _tool_done("Uncover", "takeovers", uncover_file)
-            else:
-                _tool_error("Uncover")
-                phase_result["ok"] = False
-                phase_result["errors"].append("Uncover failed")
-
-        # HTTPX
         httpx_file = paths["live"] + ".httpx"
         # Guard: truncate large DNSX outputs before HTTPX to avoid timeout
         httpx_input = live_file
@@ -406,15 +431,6 @@ class MissionRunner:
                 phase_result["ok"] = False
                 phase_result["errors"].append("HTTPX failed")
 
-        # Calcular não resolvidos
-        if os.path.exists(sub_file) and os.path.exists(live_file):
-            with open(sub_file, 'r') as f_sub, open(live_file, 'r') as f_live:
-                subs = set(line.strip() for line in f_sub if line.strip())
-                lives = set(line.strip() for line in f_live if line.strip())
-            unv = subs - lives
-            with open(unv_file, 'w') as f_unv:
-                for u in unv:
-                    f_unv.write(u + '\n')
         phase_result["counts"] = {
             "domains": count_lines(dom_file),
             "subdomains": count_lines(sub_file),
