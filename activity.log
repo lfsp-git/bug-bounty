@@ -1,201 +1,302 @@
-=== HUNT3R WATCHDOG ACTIVITY START 2026-04-11T04:07:43.046203 ===
-04:07:43 [W0] WATCHDOG       Modo WATCHDOG PREDADOR ativo. 3 workers paralelos.
-04:07:43 [W0] WATCHDOG       === CICLO 04:07 ===
-04:07:43 [W0] WATCHDOG       Cache expirado. Sincronizando com APIs em paralelo...
-04:08:08 [W0] WATCHDOG       IT pronto (185 alvos).
-04:08:18 [W0] WATCHDOG       H1 pronto (745 alvos).
-04:08:18 [W0] PREDADOR       902 NOVOS ALVOS DETECTADOS!
-04:08:18 [W0] BOUNTY         vrbo.com: 70/100
-04:08:18 [W0] BOUNTY         tstaging.com: 70/100
-04:08:18 [W0] BOUNTY         was-gw-cf.aws.indriverapp.com: 70/100
-04:08:18 [W0] WATCHDOG       50 alvos | 3 workers paralelos
-04:08:18 [W1] MISSION        ▶ vrbo.com [1/50]
-04:08:18 [W2] MISSION        ▶ tstaging.com [2/50]
-04:08:18 [W3] MISSION        ▶ was-gw-cf.aws.indriverapp.com [3/50]
-04:08:18 [W1] Subfinder      ▶ Subfinder  (1 inputs)
-04:08:18 [W2] Subfinder      ▶ Subfinder  (1 inputs)
-04:08:18 [W3] Subfinder      ▶ Subfinder  (1 inputs)
-04:08:48 [W1] Subfinder      Done in 30s
-04:08:48 [W3] Subfinder      Done in 30s
-04:08:48 [W3] Subfinder      ✓ Subfinder  0 results  (30s)
-04:08:48 [W3] DNSX           ▶ DNSX  (0 inputs)
-04:08:48 [W1] Subfinder      ✓ Subfinder  142 results  (0s)
-04:08:48 [W1] DNSX           ▶ DNSX  (142 inputs)
-04:08:48 [W3] DNSX           Done in 0s
-04:08:49 [W3] DNSX           ✓ DNSX  0 results  (0s)
-04:08:49 [W3] Uncover        ▶ Uncover  (0 inputs)
-04:08:50 [W1] DNSX           Done in 1s
-04:08:50 [W3] Uncover        Done in 0s
-04:08:50 [W3] Uncover        ✓ Uncover  0 results  (0s)
-04:08:50 [W1] DNSX           ✓ DNSX  72 results  (0s)
-04:08:50 [W1] Uncover        ▶ Uncover  (0 inputs)
-04:08:50 [W3] HTTPX          ▶ HTTPX  (0 inputs)
-04:08:50 [W1] Uncover        Done in 0s
-04:08:50 [W1] Uncover        ✓ Uncover  0 results  (0s)
-04:08:51 [W3] HTTPX          Done in 0s
-04:08:51 [W3] HTTPX          ✓ HTTPX  0 results  (0s)
-04:08:51 [W3] MISSION        1 erro(s) de fase detectados.
-04:08:51 [W3] REPORT         Bug bounty report: reports/was-gw-cf_aws_indriverapp_com_20260411_020851_report.md
-04:08:51 [W3] RESULTADO      ✓ was-gw-cf_aws_indriverapp_com  sub:0 lv:0 ep:0 sec:0 vuln:0
-04:08:51 [W3] MISSION        ▶ amplitude-game.com [4/50]
-04:08:51 [W0] WATCHDOG       [W3] Concluido: was-gw-cf_aws_indriverapp_com
-04:08:51 [W3] Subfinder      ▶ Subfinder  (1 inputs)
-04:08:51 [W1] HTTPX          ▶ HTTPX  (72 inputs)
-04:08:53 [W2] Subfinder      Done in 35s
-04:08:53 [W2] Subfinder      ✓ Subfinder  151 results  (2s)
-04:08:53 [W2] DNSX           ▶ DNSX  (151 inputs)
-04:08:57 [W2] DNSX           Done in 3s
-04:08:57 [W2] DNSX           ✓ DNSX  54 results  (3s)
-04:08:57 [W2] Uncover        ▶ Uncover  (0 inputs)
-04:08:57 [W2] Uncover        Done in 0s
-04:08:58 [W2] Uncover        ✓ Uncover  0 results  (0s)
-04:08:58 [W2] HTTPX          ▶ HTTPX  (54 inputs)
-04:09:11 [W1] HTTPX          Done in 20s
-04:09:11 [W1] HTTPX          ✓ HTTPX  44 results  (13s)
-04:09:11 [W1] Katana         ▶ Katana  (44 inputs)
-04:09:19 [W2] HTTPX          Done in 20s
-04:09:19 [W2] HTTPX          ✓ HTTPX  20 results  (0s)
-04:09:19 [W2] Katana         ▶ Katana  (20 inputs)
-04:09:21 [W3] Subfinder      Done in 30s
-04:09:21 [W3] Subfinder      ✓ Subfinder  1 results  (0s)
-04:09:21 [W3] DNSX           ▶ DNSX  (1 inputs)
-04:09:22 [W3] DNSX           Done in 0s
-04:09:22 [W3] DNSX           ✓ DNSX  1 results  (0s)
-04:09:22 [W3] Uncover        ▶ Uncover  (0 inputs)
-04:09:23 [W3] Uncover        Done in 0s
-04:09:23 [W3] Uncover        ✓ Uncover  0 results  (0s)
-04:09:23 [W3] HTTPX          ▶ HTTPX  (1 inputs)
-04:09:24 [W3] HTTPX          Done in 0s
-04:09:24 [W3] HTTPX          ✓ HTTPX  1 results  (0s)
-04:09:24 [W3] Katana         ▶ Katana  (1 inputs)
-04:09:42 [W3] Katana         Done in 17s
-04:09:42 [W3] Katana         ✓ Katana  8 results  (17s)
-04:09:42 [W3] JS Hunter      ▶ JS Hunter  (6 inputs)
-04:09:42 [W3] JS Hunter      Analisando arquivos JS em busca de segredos...
-04:09:44 [W3] JS Hunter      Encontrados 0 potenciais segredos
-04:09:44 [W3] JS Hunter      Done in 1s
-04:09:44 [W3] JS Hunter      ✓ JS Hunter  0 results  (1s)
-04:09:44 [W3] Nuclei         ▶ Nuclei  (1 inputs)
-04:09:50 [W2] Katana         Done in 31s
-04:09:50 [W2] Katana         ✓ Katana  22 results  (0s)
-04:09:50 [W2] JS Hunter      ▶ JS Hunter  (1 inputs)
-04:09:50 [W2] JS Hunter      Analisando arquivos JS em busca de segredos...
-04:09:52 [W2] JS Hunter      Encontrados 0 potenciais segredos
-04:09:52 [W2] JS Hunter      Done in 1s
-04:09:52 [W2] JS Hunter      ✓ JS Hunter  0 results  (1s)
-04:09:52 [W2] TECH           Detected: django
-04:09:52 [W2] TAGS           Using tags: django,cve,misconfig,sqli,ssti...
-04:09:52 [W2] Nuclei         ▶ Nuclei  (20 inputs)
-04:09:56 [W3] Nuclei         Done in 12s
-04:09:56 [W3] Nuclei         ✓ Nuclei  0 results  (4s)
-04:09:58 [W3] AI VALIDATION  Score < 80. Pulando validação com IA.
-04:09:58 [W3] REPORT         Bug bounty report: reports/amplitude-game_com_20260411_020958_report.md
-04:09:58 [W3] RESULTADO      ✓ amplitude-game_com  sub:1 lv:1 ep:1 sec:0 vuln:0
-04:09:58 [W3] MISSION        ▶ https://ort-authenticator.pingone.com/* [5/50]
-04:09:58 [W0] WATCHDOG       [W3] Concluido: amplitude-game_com
-04:09:58 [W3] Subfinder      ▶ Subfinder  (1 inputs)
-04:10:05 [W2] Nuclei         Done in 13s
-04:10:05 [W2] Nuclei         ✓ Nuclei  0 results  (0s)
-04:10:05 [W2] AI VALIDATION  Score < 80. Pulando validação com IA.
-04:10:05 [W2] REPORT         Bug bounty report: reports/tstaging_com_20260411_021005_report.md
-04:10:05 [W2] RESULTADO      ✓ tstaging_com  sub:151 lv:54 ep:20 sec:0 vuln:0
-04:10:05 [W2] MISSION        ▶ buddypress.org,bbpress.org,profiles.wordpress.org [6/50]
-04:10:05 [W0] WATCHDOG       [W2] Concluido: tstaging_com
-04:10:05 [W2] Subfinder      ▶ Subfinder  (1 inputs)
-04:10:29 [W3] Subfinder      Done in 30s
-04:10:29 [W3] Subfinder      ✓ Subfinder  0 results  (23s)
-04:10:29 [W3] DNSX           ▶ DNSX  (0 inputs)
-04:10:29 [W3] DNSX           Done in 0s
-04:10:29 [W3] DNSX           ✓ DNSX  0 results  (0s)
-04:10:30 [W3] Uncover        ▶ Uncover  (0 inputs)
-04:10:30 [W1] Katana         Done in 78s
-04:10:30 [W3] Uncover        Done in 0s
-04:10:30 [W1] Katana         ✓ Katana  213 results  (0s)
-04:10:30 [W1] JS Hunter      ▶ JS Hunter  (8 inputs)
-04:10:30 [W1] JS Hunter      Analisando arquivos JS em busca de segredos...
-04:10:30 [W3] Uncover        ✓ Uncover  0 results  (0s)
-04:10:31 [W3] HTTPX          ▶ HTTPX  (0 inputs)
-04:10:31 [W3] HTTPX          Done in 0s
-04:10:31 [W3] HTTPX          ✓ HTTPX  0 results  (0s)
-04:10:31 [W3] MISSION        1 erro(s) de fase detectados.
-04:10:31 [W3] RESULTADO      ✓ https://ort-authenticator_pingone_com/*  sub:0 lv:0 ep:0 sec:0 vuln:0
-04:10:31 [W3] MISSION        ▶ cb.dev [7/50]
-04:10:31 [W0] WATCHDOG       [W3] Concluido: https://ort-authenticator_pingone_com/*
-04:10:31 [W3] Subfinder      ▶ Subfinder  (1 inputs)
-04:10:32 [W1] JS Hunter      Encontrados 0 potenciais segredos
-04:10:32 [W1] JS Hunter      Done in 2s
-04:10:32 [W1] JS Hunter      ✓ JS Hunter  0 results  (2s)
-04:10:32 [W1] TECH           Detected: aspnet + django + joomla + rest
-04:10:32 [W1] TAGS           Using tags: asp,aspx,cve,misconfig,sqli,path-traversal,joomla,component,...
-04:10:32 [W1] Nuclei         ▶ Nuclei  (44 inputs)
-04:10:36 [W2] Subfinder      Done in 30s
-04:10:36 [W2] Subfinder      ✓ Subfinder  0 results  (4s)
-04:10:36 [W2] DNSX           ▶ DNSX  (0 inputs)
-04:10:36 [W2] DNSX           Done in 0s
-04:10:36 [W2] DNSX           ✓ DNSX  0 results  (0s)
-04:10:37 [W2] Uncover        ▶ Uncover  (0 inputs)
-04:10:37 [W2] Uncover        Done in 0s
-04:10:37 [W2] Uncover        ✓ Uncover  0 results  (0s)
-04:10:38 [W2] HTTPX          ▶ HTTPX  (0 inputs)
-04:10:38 [W2] HTTPX          Done in 0s
-04:10:38 [W2] HTTPX          ✓ HTTPX  0 results  (0s)
-04:10:38 [W2] MISSION        1 erro(s) de fase detectados.
-04:10:38 [W2] REPORT         Bug bounty report: reports/buddypress_org,bbpress_org,profiles_wordpress_org_20260411_021038_report.md
-04:10:38 [W2] RESULTADO      ✓ buddypress_org,bbpress_org,profiles_wordpress_org  sub:0 lv:0 ep:0 sec:0 vuln:0
-04:10:38 [W2] MISSION        ▶ district.in [8/50]
-04:10:38 [W0] WATCHDOG       [W2] Concluido: buddypress_org,bbpress_org,profiles_wordpress_org
-04:10:38 [W2] Subfinder      ▶ Subfinder  (1 inputs)
-04:10:46 [W1] Nuclei         Done in 13s
-04:10:47 [W1] Nuclei         ✓ Nuclei  0 results  (14s)
-04:10:47 [W1] AI VALIDATION  Score < 80. Pulando validação com IA.
-04:10:47 [W1] REPORT         Bug bounty report: reports/vrbo_com_20260411_021047_report.md
-04:10:47 [W1] RESULTADO      ✓ vrbo_com  sub:142 lv:72 ep:44 sec:0 vuln:0
-04:10:47 [W1] MISSION        ▶ uzleuven.* [9/50]
-04:10:47 [W0] WATCHDOG       [W1] Concluido: vrbo_com
-04:10:47 [W1] Subfinder      ▶ Subfinder  (1 inputs)
-04:11:02 [W3] Subfinder      Done in 30s
-04:11:02 [W3] Subfinder      ✓ Subfinder  12 results  (14s)
-04:11:02 [W3] DNSX           ▶ DNSX  (12 inputs)
-04:11:02 [W3] DNSX           Done in 0s
-04:11:02 [W3] DNSX           ✓ DNSX  8 results  (0s)
-04:11:03 [W3] Uncover        ▶ Uncover  (0 inputs)
-04:11:03 [W3] Uncover        Done in 0s
-04:11:03 [W3] Uncover        ✓ Uncover  0 results  (0s)
-04:11:04 [W3] HTTPX          ▶ HTTPX  (8 inputs)
-04:11:09 [W2] Subfinder      Done in 30s
-04:11:09 [W2] Subfinder      ✓ Subfinder  11 results  (0s)
-04:11:09 [W2] DNSX           ▶ DNSX  (11 inputs)
-04:11:09 [W2] DNSX           Done in 0s
-04:11:10 [W2] DNSX           ✓ DNSX  7 results  (0s)
-04:11:10 [W2] Uncover        ▶ Uncover  (0 inputs)
-04:11:10 [W2] Uncover        Done in 0s
-04:11:10 [W2] Uncover        ✓ Uncover  0 results  (0s)
-04:11:11 [W2] HTTPX          ▶ HTTPX  (7 inputs)
-04:11:13 [W2] HTTPX          Done in 2s
-04:11:13 [W2] HTTPX          ✓ HTTPX  7 results  (2s)
-04:11:13 [W2] Katana         ▶ Katana  (7 inputs)
-04:11:15 [W0] WATCHDOG       Interrupcao recebida. Cancelando workers...
-04:11:15 [W2] Katana         Done in 1s
-04:11:15 [W1] Subfinder      Done in 28s
-04:11:15 [W2] Katana         ✓ Katana  46 results  (1s)
-04:11:15 [W2] JS Hunter      ▶ JS Hunter  (35 inputs)
-04:11:15 [W2] JS Hunter      Analisando arquivos JS em busca de segredos...
-04:11:15 [W1] Subfinder      ✓ Subfinder  0 results  (0s)
-04:11:15 [W1] DNSX           ▶ DNSX  (0 inputs)
-04:11:15 [W1] DNSX           Done in 0s
-04:11:15 [W1] DNSX           ✓ DNSX  0 results  (0s)
-04:11:16 [W1] Uncover        ▶ Uncover  (0 inputs)
-04:11:16 [W1] Uncover        Done in 0s
-04:11:16 [W1] Uncover        ✓ Uncover  0 results  (0s)
-04:11:17 [W1] HTTPX          ▶ HTTPX  (0 inputs)
-04:11:17 [W1] HTTPX          Done in 0s
-04:11:17 [W1] HTTPX          ✓ HTTPX  0 results  (0s)
-04:11:17 [W1] MISSION        1 erro(s) de fase detectados.
-04:11:17 [W1] REPORT         Bug bounty report: reports/uzleuven_*_20260411_021117_report.md
-04:11:17 [W1] RESULTADO      ✓ uzleuven_*  sub:0 lv:0 ep:0 sec:0 vuln:0
-04:11:19 [W2] JS Hunter      Encontrados 0 potenciais segredos
-04:11:19 [W2] JS Hunter      Done in 4s
-04:11:19 [W2] JS Hunter      ✓ JS Hunter  0 results  (4s)
-04:11:19 [W2] TECH           Detected: django + mongodb
-04:11:19 [W2] TAGS           Using tags: django,cve,misconfig,sqli,ssti,nosqli,mongodb,injection...
-04:11:19 [W2] Nuclei         ▶ Nuclei  (7 inputs)
+=== HUNT3R WATCHDOG ACTIVITY START 2026-04-11T05:57:40.080716 ===
+05:57:40 [W0] WATCHDOG       Modo WATCHDOG PREDADOR ativo. 3 workers paralelos.
+05:57:40 [W0] WATCHDOG       === CICLO 05:57 ===
+05:57:40 [W0] WATCHDOG       Usando cache local de wildcards (Cache < 12h).
+05:57:40 [W0] PREDADOR       2 NOVOS ALVOS DETECTADOS!
+05:57:40 [W0] BOUNTY         *.sbb.ch: 70/100
+05:57:40 [W0] BOUNTY         *.say.rocks: 70/100
+05:57:40 [W0] BOUNTY         *.uberinternal.com: 70/100
+05:57:40 [W0] WATCHDOG       50 alvos | 3 workers paralelos
+05:57:40 [W1] MISSION        ▶ *.sbb.ch [1/50]
+05:57:40 [W2] MISSION        ▶ *.say.rocks [2/50]
+05:57:40 [W3] MISSION        ▶ *.uberinternal.com [3/50]
+05:57:40 [W1] Subfinder      ▶ Subfinder  (1 inputs)
+05:57:40 [W3] Subfinder      ▶ Subfinder  (1 inputs)
+05:57:40 [W2] Subfinder      ▶ Subfinder  (1 inputs)
+05:58:10 [W2] Subfinder      Done in 30s
+05:58:10 [W1] Subfinder      Done in 30s
+05:58:10 [W2] Subfinder      ✓ Subfinder  120 results  (30s)
+05:58:10 [W2] DNSX           ▶ DNSX  (120 inputs)
+05:58:10 [W1] Subfinder      ✓ Subfinder  4622 results  (0s)
+05:58:10 [W1] DNSX           ▶ DNSX  (4622 inputs)
+05:58:10 [W3] Subfinder      Done in 30s
+05:58:11 [W3] Subfinder      ✓ Subfinder  427 results  (0s)
+05:58:11 [W3] DNSX           ▶ DNSX  (427 inputs)
+05:58:12 [W2] DNSX           Done in 1s
+05:58:12 [W2] DNSX           ✓ DNSX  37 results  (1s)
+05:58:12 [W2] Uncover        ▶ Uncover  (0 inputs)
+05:58:13 [W2] Uncover        Done in 0s
+05:58:13 [W2] Uncover        ✓ Uncover  0 results  (0s)
+05:58:13 [W2] HTTPX          ▶ HTTPX  (37 inputs)
+05:58:17 [W3] DNSX           Done in 5s
+05:58:17 [W3] DNSX           ✓ DNSX  296 results  (0s)
+05:58:17 [W3] Uncover        ▶ Uncover  (0 inputs)
+05:58:17 [W3] Uncover        Done in 0s
+05:58:17 [W3] Uncover        ✓ Uncover  0 results  (0s)
+05:58:18 [W3] HTTPX          ▶ HTTPX  (296 inputs)
+05:58:34 [W2] HTTPX          Done in 20s
+05:58:34 [W2] HTTPX          ✓ HTTPX  35 results  (16s)
+05:58:34 [W2] Katana         ▶ Katana  (35 inputs)
+05:58:41 [W3] HTTPX          Done in 23s
+05:58:41 [W3] HTTPX          ✓ HTTPX  269 results  (0s)
+05:58:41 [W3] Katana         ▶ Katana  (269 inputs)
+05:59:10 [W1] DNSX           Done in 59s
+05:59:10 [W1] DNSX           ✓ DNSX  2994 results  (0s)
+05:59:10 [W1] Uncover        ▶ Uncover  (0 inputs)
+05:59:10 [W1] Uncover        Done in 0s
+05:59:10 [W1] Uncover        ✓ Uncover  0 results  (0s)
+05:59:11 [W1] HTTPX          ▶ HTTPX  (2994 inputs)
+05:59:37 [W2] Katana         Done in 63s
+05:59:38 [W2] Katana         ✓ Katana  134 results  (56s)
+05:59:38 [W2] JS Hunter      ▶ JS Hunter  (72 inputs)
+05:59:38 [W2] JS Hunter      Analisando arquivos JS em busca de segredos...
+05:59:48 [W2] JS Hunter      Encontrados 1 potenciais segredos
+05:59:48 [W2] JS Hunter      Done in 10s
+05:59:48 [W2] JS Hunter      ✓ JS Hunter  1 results  (10s)
+05:59:48 [W2] TECH           Detected: django + mongodb
+05:59:48 [W2] TAGS           Using tags: nosqli,mongodb,injection,django,cve,misconfig,sqli,ssti...
+05:59:48 [W2] Nuclei         ▶ Nuclei  (35 inputs)
+06:00:05 [W2] Nuclei         Done in 16s
+06:00:05 [W2] Nuclei         ✓ Nuclei  0 results  (16s)
+06:00:09 [W2] AI VALIDATION  Score < 80. Pulando validação com IA.
+06:00:09 [W2] NOTIFIER       JS secrets: 0 → Telegram, 1 → Discord
+06:00:09 [W2] REPORT         Bug bounty report: reports/say_rocks_20260411_040009_report.md
+06:00:09 [W2] RESULTADO      ✓ say_rocks  sub:120 lv:37 ep:35 sec:1 vuln:0
+06:00:09 [W2] MISSION        ▶ *.base.org [4/50]
+06:00:09 [W0] WATCHDOG       [W2] Concluido: say_rocks
+06:00:09 [W2] Subfinder      ▶ Subfinder  (1 inputs)
+06:00:40 [W2] Subfinder      Done in 30s
+06:00:40 [W2] Subfinder      ✓ Subfinder  46 results  (30s)
+06:00:40 [W2] DNSX           ▶ DNSX  (46 inputs)
+06:00:40 [W2] DNSX           Done in 0s
+06:00:40 [W2] DNSX           ✓ DNSX  34 results  (0s)
+06:00:41 [W2] Uncover        ▶ Uncover  (0 inputs)
+06:00:41 [W2] Uncover        Done in 0s
+06:00:41 [W2] Uncover        ✓ Uncover  0 results  (0s)
+06:00:42 [W2] HTTPX          ▶ HTTPX  (34 inputs)
+06:00:44 [W2] HTTPX          Done in 2s
+06:00:45 [W2] HTTPX          ✓ HTTPX  34 results  (2s)
+06:00:45 [W2] Katana         ▶ Katana  (34 inputs)
+06:01:45 [W2] Katana         Done in 60s
+06:01:45 [W2] Katana         ✓ Katana  454 results  (60s)
+06:01:45 [W2] JS Hunter      ▶ JS Hunter  (200 inputs)
+06:01:45 [W2] JS Hunter      Analisando arquivos JS em busca de segredos...
+06:01:58 [W1] HTTPX          Done in 167s
+06:01:58 [W1] HTTPX          ✓ HTTPX  2643 results  (0s)
+06:01:58 [W1] GUARD          Alvo abusivo (2994 subs). Truncando lista
+06:01:58 [W1] Katana         ▶ Katana  (2643 inputs)
+06:02:12 [W2] JS Hunter      Encontrados 137 potenciais segredos
+06:02:12 [W2] JS Hunter      Done in 26s
+06:02:12 [W2] JS Hunter      ✓ JS Hunter  137 results  (27s)
+06:02:12 [W2] TECH           Detected: django + drupal + joomla + mongodb + rest
+06:02:12 [W2] TAGS           Using tags: joomla,cve,misconfig,component,drupal,module,nosqli,mongodb,...
+06:02:12 [W2] Nuclei         ▶ Nuclei  (34 inputs)
+06:02:26 [W2] Nuclei         Done in 13s
+06:02:26 [W2] Nuclei         ✓ Nuclei  0 results  (13s)
+06:02:26 [W2] AI VALIDATION  Score < 80. Pulando validação com IA.
+06:02:39 [W2] NOTIFIER       JS secrets: 4 → Telegram, 26 → Discord
+06:02:39 [W2] REPORT         Bug bounty report: reports/base_org_20260411_040239_report.md
+06:02:39 [W2] RESULTADO      ✓ base_org  sub:46 lv:34 ep:34 sec:137 vuln:0
+06:02:39 [W2] MISSION        ▶ *.rockstargames.com [5/50]
+06:02:39 [W0] WATCHDOG       [W2] Concluido: base_org
+06:02:39 [W2] Subfinder      ▶ Subfinder  (1 inputs)
+06:03:09 [W2] Subfinder      Done in 30s
+06:03:09 [W2] Subfinder      ✓ Subfinder  470 results  (30s)
+06:03:09 [W2] DNSX           ▶ DNSX  (470 inputs)
+06:03:21 [W2] DNSX           Done in 11s
+06:03:21 [W2] DNSX           ✓ DNSX  237 results  (11s)
+06:03:21 [W2] Uncover        ▶ Uncover  (0 inputs)
+06:03:21 [W2] Uncover        Done in 0s
+06:03:21 [W2] Uncover        ✓ Uncover  0 results  (0s)
+06:03:22 [W2] HTTPX          ▶ HTTPX  (237 inputs)
+06:03:41 [W3] ENGINE_WARN    Timeout executing Katana after 300s. Skipping.
+06:03:41 [W3] Katana         Done in 300s
+06:03:41 [W3] Katana         ✓ Katana  637 results  (103s)
+06:03:41 [W3] JS Hunter      ▶ JS Hunter  (69 inputs)
+06:03:41 [W3] JS Hunter      Analisando arquivos JS em busca de segredos...
+06:04:04 [W2] HTTPX          Done in 42s
+06:04:04 [W2] HTTPX          ✓ HTTPX  138 results  (42s)
+06:04:04 [W2] Katana         ▶ Katana  (138 inputs)
+06:05:16 [W3] JS Hunter      Encontrados 28 potenciais segredos
+06:05:16 [W3] JS Hunter      Done in 94s
+06:05:16 [W3] JS Hunter      ✓ JS Hunter  28 results  (94s)
+06:05:16 [W3] TECH           Detected: aspnet + php + rest + wordpress
+06:05:16 [W3] TAGS           Using tags: wordpress,cve,plugin,theme,misconfig,wpscan,asp,aspx,sqli,pa...
+06:05:16 [W3] Nuclei         ▶ Nuclei  (269 inputs)
+06:05:29 [W3] Nuclei         Done in 12s
+06:05:29 [W3] Nuclei         ✓ Nuclei  0 results  (12s)
+06:05:29 [W3] AI VALIDATION  Score < 80. Pulando validação com IA.
+06:05:38 [W3] NOTIFIER       JS secrets: 6 → Telegram, 22 → Discord
+06:05:38 [W3] REPORT         Bug bounty report: reports/uberinternal_com_20260411_040538_report.md
+06:05:38 [W3] RESULTADO      ✓ uberinternal_com  sub:427 lv:296 ep:269 sec:28 vuln:0
+06:05:38 [W3] MISSION        ▶ *.seoab.io [6/50]
+06:05:38 [W0] WATCHDOG       [W3] Concluido: uberinternal_com
+06:05:38 [W3] Subfinder      ▶ Subfinder  (1 inputs)
+06:06:08 [W3] Subfinder      Done in 30s
+06:06:08 [W3] Subfinder      ✓ Subfinder  0 results  (30s)
+06:06:08 [W3] DNSX           ▶ DNSX  (0 inputs)
+06:06:09 [W3] DNSX           Done in 0s
+06:06:09 [W3] DNSX           ✓ DNSX  0 results  (0s)
+06:06:09 [W3] Uncover        ▶ Uncover  (0 inputs)
+06:06:10 [W3] Uncover        Done in 0s
+06:06:10 [W3] Uncover        ✓ Uncover  0 results  (0s)
+06:06:10 [W3] HTTPX          ▶ HTTPX  (0 inputs)
+06:06:11 [W3] HTTPX          Done in 0s
+06:06:11 [W3] HTTPX          ✓ HTTPX  0 results  (0s)
+06:06:11 [W3] REPORT         Bug bounty report: reports/seoab_io_20260411_040611_report.md
+06:06:11 [W3] RESULTADO      ✓ seoab_io  sub:0 lv:0 ep:0 sec:0 vuln:0
+06:06:11 [W3] MISSION        ▶ *.cheaptickets.com [7/50]
+06:06:11 [W0] WATCHDOG       [W3] Concluido: seoab_io
+06:06:11 [W3] Subfinder      ▶ Subfinder  (1 inputs)
+06:06:41 [W3] Subfinder      Done in 30s
+06:06:41 [W3] Subfinder      ✓ Subfinder  74 results  (30s)
+06:06:41 [W3] DNSX           ▶ DNSX  (74 inputs)
+06:06:42 [W3] DNSX           Done in 0s
+06:06:42 [W3] DNSX           ✓ DNSX  55 results  (0s)
+06:06:42 [W3] Uncover        ▶ Uncover  (0 inputs)
+06:06:43 [W3] Uncover        Done in 0s
+06:06:43 [W3] Uncover        ✓ Uncover  0 results  (0s)
+06:06:43 [W3] HTTPX          ▶ HTTPX  (55 inputs)
+06:06:58 [W1] ENGINE_WARN    Timeout executing Katana after 300s. Skipping.
+06:06:58 [W1] Katana         Done in 300s
+06:06:59 [W1] Katana         ✓ Katana  1692 results  (174s)
+06:06:59 [W1] JS Hunter      ▶ JS Hunter  (366 inputs)
+06:06:59 [W1] JS Hunter      Analisando arquivos JS em busca de segredos...
+06:07:04 [W3] HTTPX          Done in 20s
+06:07:04 [W3] HTTPX          ✓ HTTPX  21 results  (20s)
+06:07:04 [W3] Katana         ▶ Katana  (21 inputs)
+06:07:49 [W2] Katana         Done in 225s
+06:07:50 [W2] Katana         ✓ Katana  592 results  (45s)
+06:07:50 [W2] JS Hunter      ▶ JS Hunter  (31 inputs)
+06:07:50 [W2] JS Hunter      Analisando arquivos JS em busca de segredos...
+06:07:51 [W3] Katana         Done in 46s
+06:07:51 [W3] Katana         ✓ Katana  108 results  (0s)
+06:07:51 [W3] JS Hunter      ▶ JS Hunter  (0 inputs)
+06:07:51 [W3] JS Hunter      Analisando arquivos JS em busca de segredos...
+06:07:51 [W3] JS Hunter      Encontrados 0 potenciais segredos
+06:07:51 [W3] JS Hunter      Done in 0s
+06:07:51 [W3] JS Hunter      ✓ JS Hunter  0 results  (0s)
+06:07:51 [W3] TECH           Detected: aspnet
+06:07:51 [W3] TAGS           Using tags: asp,aspx,cve,misconfig,sqli,path-traversal...
+06:07:52 [W3] Nuclei         ▶ Nuclei  (21 inputs)
+06:08:00 [W2] JS Hunter      Encontrados 0 potenciais segredos
+06:08:00 [W2] JS Hunter      Done in 10s
+06:08:00 [W2] JS Hunter      ✓ JS Hunter  0 results  (0s)
+06:08:00 [W2] TECH           Detected: aspnet + django + rest
+06:08:00 [W2] TAGS           Using tags: asp,aspx,cve,misconfig,sqli,path-traversal,xss,xxe,info-disc...
+06:08:00 [W2] Nuclei         ▶ Nuclei  (138 inputs)
+06:08:05 [W3] Nuclei         Done in 13s
+06:08:05 [W3] Nuclei         ✓ Nuclei  0 results  (5s)
+06:08:05 [W3] AI VALIDATION  Score < 80. Pulando validação com IA.
+06:08:05 [W3] REPORT         Bug bounty report: reports/cheaptickets_com_20260411_040805_report.md
+06:08:05 [W3] RESULTADO      ✓ cheaptickets_com  sub:74 lv:55 ep:21 sec:0 vuln:0
+06:08:05 [W3] MISSION        ▶ *.spiketrap.io [8/50]
+06:08:05 [W0] WATCHDOG       [W3] Concluido: cheaptickets_com
+06:08:05 [W3] Subfinder      ▶ Subfinder  (1 inputs)
+06:08:14 [W2] Nuclei         Done in 14s
+06:08:14 [W2] Nuclei         ✓ Nuclei  0 results  (0s)
+06:08:14 [W2] AI VALIDATION  Score < 80. Pulando validação com IA.
+06:08:14 [W2] REPORT         Bug bounty report: reports/rockstargames_com_20260411_040814_report.md
+06:08:14 [W2] RESULTADO      ✓ rockstargames_com  sub:470 lv:237 ep:138 sec:0 vuln:0
+06:08:14 [W2] MISSION        ▶ pc-gw-cf.*.aws.indriverapp.com [9/50]
+06:08:14 [W0] WATCHDOG       [W2] Concluido: rockstargames_com
+06:08:14 [W2] Subfinder      ▶ Subfinder  (1 inputs)
+06:08:35 [W3] Subfinder      Done in 30s
+06:08:35 [W3] Subfinder      ✓ Subfinder  4 results  (21s)
+06:08:35 [W3] DNSX           ▶ DNSX  (4 inputs)
+06:08:36 [W3] DNSX           Done in 0s
+06:08:36 [W3] DNSX           ✓ DNSX  2 results  (0s)
+06:08:36 [W3] Uncover        ▶ Uncover  (0 inputs)
+06:08:37 [W3] Uncover        Done in 0s
+06:08:37 [W3] Uncover        ✓ Uncover  0 results  (0s)
+06:08:37 [W3] HTTPX          ▶ HTTPX  (2 inputs)
+06:08:39 [W3] HTTPX          Done in 1s
+06:08:39 [W3] HTTPX          ✓ HTTPX  2 results  (1s)
+06:08:39 [W3] Katana         ▶ Katana  (2 inputs)
+06:08:45 [W2] Subfinder      Done in 30s
+06:08:45 [W2] Subfinder      ✓ Subfinder  0 results  (0s)
+06:08:45 [W2] DNSX           ▶ DNSX  (0 inputs)
+06:08:45 [W2] DNSX           Done in 0s
+06:08:45 [W2] DNSX           ✓ DNSX  0 results  (0s)
+06:08:46 [W2] Uncover        ▶ Uncover  (0 inputs)
+06:08:46 [W2] Uncover        Done in 0s
+06:08:46 [W2] Uncover        ✓ Uncover  0 results  (0s)
+06:08:47 [W2] HTTPX          ▶ HTTPX  (0 inputs)
+06:08:47 [W2] HTTPX          Done in 0s
+06:08:47 [W2] HTTPX          ✓ HTTPX  0 results  (0s)
+06:08:47 [W2] REPORT         Bug bounty report: reports/pc_gw_cf_*_aws_indriverapp_com_20260411_040847_report.md
+06:08:47 [W2] RESULTADO      ✓ pc_gw_cf_*_aws_indriverapp_com  sub:0 lv:0 ep:0 sec:0 vuln:0
+06:08:47 [W2] MISSION        ▶ fch-cf.*.aws.indriverapp.com [10/50]
+06:08:47 [W0] WATCHDOG       [W2] Concluido: pc_gw_cf_*_aws_indriverapp_com
+06:08:47 [W2] Subfinder      ▶ Subfinder  (1 inputs)
+06:08:55 [W3] Katana         Done in 16s
+06:08:55 [W3] Katana         ✓ Katana  5 results  (16s)
+06:08:55 [W3] JS Hunter      ▶ JS Hunter  (0 inputs)
+06:08:55 [W3] JS Hunter      Analisando arquivos JS em busca de segredos...
+06:08:55 [W3] JS Hunter      Encontrados 0 potenciais segredos
+06:08:55 [W3] JS Hunter      Done in 0s
+06:08:55 [W3] JS Hunter      ✓ JS Hunter  0 results  (0s)
+06:08:56 [W3] Nuclei         ▶ Nuclei  (2 inputs)
+06:09:08 [W3] Nuclei         Done in 12s
+06:09:08 [W3] Nuclei         ✓ Nuclei  0 results  (12s)
+06:09:08 [W3] AI VALIDATION  Score < 80. Pulando validação com IA.
+06:09:08 [W3] REPORT         Bug bounty report: reports/spiketrap_io_20260411_040908_report.md
+06:09:08 [W3] RESULTADO      ✓ spiketrap_io  sub:4 lv:2 ep:2 sec:0 vuln:0
+06:09:08 [W3] MISSION        ▶ *.booking.com [11/50]
+06:09:08 [W0] WATCHDOG       [W3] Concluido: spiketrap_io
+06:09:08 [W3] Subfinder      ▶ Subfinder  (1 inputs)
+06:09:18 [W2] Subfinder      Done in 30s
+06:09:18 [W2] Subfinder      ✓ Subfinder  0 results  (9s)
+06:09:18 [W2] DNSX           ▶ DNSX  (0 inputs)
+06:09:18 [W2] DNSX           Done in 0s
+06:09:18 [W2] DNSX           ✓ DNSX  0 results  (0s)
+06:09:19 [W2] Uncover        ▶ Uncover  (0 inputs)
+06:09:19 [W2] Uncover        Done in 0s
+06:09:19 [W2] Uncover        ✓ Uncover  0 results  (0s)
+06:09:20 [W2] HTTPX          ▶ HTTPX  (0 inputs)
+06:09:20 [W2] HTTPX          Done in 0s
+06:09:20 [W2] HTTPX          ✓ HTTPX  0 results  (0s)
+06:09:20 [W2] REPORT         Bug bounty report: reports/fch_cf_*_aws_indriverapp_com_20260411_040920_report.md
+06:09:20 [W2] RESULTADO      ✓ fch_cf_*_aws_indriverapp_com  sub:0 lv:0 ep:0 sec:0 vuln:0
+06:09:20 [W2] MISSION        ▶ *.internal.exoscale.ch [12/50]
+06:09:20 [W0] WATCHDOG       [W2] Concluido: fch_cf_*_aws_indriverapp_com
+06:09:20 [W2] Subfinder      ▶ Subfinder  (1 inputs)
+06:09:38 [W3] Subfinder      Done in 30s
+06:09:39 [W3] Subfinder      ✓ Subfinder  1693 results  (18s)
+06:09:39 [W3] DNSX           ▶ DNSX  (1693 inputs)
+06:09:51 [W2] Subfinder      Done in 30s
+06:09:51 [W2] Subfinder      ✓ Subfinder  2627 results  (0s)
+06:09:51 [W2] DNSX           ▶ DNSX  (2627 inputs)
+06:09:52 [W1] JS Hunter      Encontrados 38 potenciais segredos
+06:09:52 [W1] JS Hunter      Done in 172s
+06:09:52 [W1] JS Hunter      ✓ JS Hunter  38 results  (0s)
+06:09:52 [W1] TECH           Detected: django + drupal + graphql + mongodb + php + rails + rest + wordpress
+06:09:52 [W1] TAGS           Using tags: php,sqli,rfi,lfi,xss,cve,drupal,misconfig,module,wordpress,p...
+06:09:52 [W1] NUCLEI         Large target set detected (2643 hosts), timeout -> 5400s
+06:09:52 [W1] Nuclei         ▶ Nuclei  (2643 inputs)
+06:10:07 [W1] Nuclei         Done in 15s
+06:10:07 [W1] Nuclei         ✓ Nuclei  0 results  (15s)
+06:10:07 [W1] AI VALIDATION  Score < 80. Pulando validação com IA.
+06:10:08 [W3] DNSX           Done in 29s
+06:10:08 [W3] DNSX           ✓ DNSX  606 results  (17s)
+06:10:08 [W3] Uncover        ▶ Uncover  (0 inputs)
+06:10:09 [W3] Uncover        Done in 0s
+06:10:09 [W3] Uncover        ✓ Uncover  0 results  (0s)
+06:10:09 [W3] HTTPX          ▶ HTTPX  (606 inputs)
+06:10:16 [W1] NOTIFIER       JS secrets: 4 → Telegram, 22 → Discord
+06:10:16 [W1] REPORT         Bug bounty report: reports/sbb_ch_20260411_041016_report.md
+06:10:16 [W1] RESULTADO      ✓ sbb_ch  sub:4622 lv:2994 ep:2643 sec:38 vuln:0
+06:10:16 [W1] MISSION        ▶ inc-gw-cf.*.aws.indriverapp.com [13/50]
+06:10:16 [W0] WATCHDOG       [W1] Concluido: sbb_ch
+06:10:16 [W1] Subfinder      ▶ Subfinder  (1 inputs)
+06:10:24 [W2] DNSX           Done in 32s
+06:10:24 [W2] DNSX           ✓ DNSX  550 results  (0s)
+06:10:24 [W2] Uncover        ▶ Uncover  (0 inputs)
+06:10:24 [W2] Uncover        Done in 0s
+06:10:24 [W2] Uncover        ✓ Uncover  0 results  (0s)
+06:10:25 [W2] HTTPX          ▶ HTTPX  (550 inputs)
+06:10:33 [W0] WATCHDOG       Interrupcao recebida. Cancelando workers...
+06:10:33 [W1] Subfinder      Done in 16s
+06:10:33 [W1] Subfinder      ✓ Subfinder  0 results  (16s)
+06:10:33 [W1] DNSX           ▶ DNSX  (0 inputs)
+06:10:33 [W1] DNSX           Done in 0s
