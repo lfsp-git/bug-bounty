@@ -1,142 +1,85 @@
-# Hunt3r Caveman Mode - Workspace Instructions
+# Hunt3r Caveman Mode — Instruções do Workspace
 
-## Purpose
-These instructions guide all agents working on Hunt3r to adopt "Caveman Mode" principles: direct problem-solving, minimal context overhead, maximum code velocity.
+## Propósito
+Guiar agentes no Hunt3r com princípios "Caveman Mode": resolução direta, mínimo overhead de contexto, máxima velocidade de código.
 
-## Global Principles
+## Princípios globais
 
-### 1. **Root Cause Analysis (RCA)**
-- Find the exact line/function causing the issue
-- Trace backwards 1-2 steps to understand context
-- State the problem in 1 clear sentence
-- Stop investigating once root cause is identified
+### 1. Análise de causa raiz
+- Encontrar a linha/função exata causando o problema
+- Rastrear 1-2 passos para trás para entender contexto
+- Declarar o problema em 1 frase clara
+- Parar de investigar assim que a causa raiz for identificada
 
-### 2. **Surgical Fixes**
-- Modify only files directly related to the issue
-- No refactoring beyond what's necessary to fix the problem
-- No premature optimization
-- Single responsibility per commit
+### 2. Correções cirúrgicas
+- Modificar apenas arquivos diretamente relacionados
+- Sem refatoração além do necessário
+- Sem otimização prematura
+- Responsabilidade única por commit
 
-### 3. **Validation Before Commit**
-- `python -m py_compile <file>` for syntax check (mandatory)
-- Run unit tests if they exist for the modified code
-- Manual spot-check of affected code paths
-- Never commit with failing tests
+### 3. Validação antes do commit
+- `python3 -m py_compile <arquivo>` para checagem de sintaxe (obrigatório)
+- Rodar testes unitários se existirem para o código modificado
+- Nunca commitar com testes falhando
 
-### 4. **Context Conservation**
-- Batch related tool calls (grep all patterns at once, not sequential searches)
-- Batch file edits to same file in single `edit` call
-- Suppress verbose output (use `--quiet`, pipe to `head`)
-- Reference session artifacts (action_plan.md, architecture_diagram.md) for context
+### 4. Conservação de contexto
+- Agrupar chamadas de ferramentas relacionadas
+- Agrupar edições no mesmo arquivo em uma única chamada `edit`
+- Suprimir output verboso (`--quiet`, pipe para `head`)
 
-### 5. **Documentation**
-- Update comments only if code behavior changed
-- Keep docstrings synchronized with actual implementation
-- No "TODO" comments left in commits
-- Session artifacts live in `/docs/temp/` for reference
+### 5. Documentação
+- Atualizar comentários apenas se o comportamento do código mudar
+- Manter docstrings sincronizadas com implementação
+- Sem comentários "TODO" em commits
 
-## FASE 2 Workflow
+## Organização de arquivos
 
-### Initialization
-1. Query SQL `todos` table for pending issues
-2. Set todo `status = 'in_progress'`
-3. Read issue description from SQL for full context
+### Código fonte
+- `main.py` — Ponto de entrada CLI
+- `core/` — Orquestração, IA, watchdog, filtros, UI, config
+- `recon/` — Engines, JS Hunter, APIs de plataforma, descoberta de ferramentas
+- `tests/` — Suite de testes unitários e integração
 
-### Execution
-1. Locate all occurrences of the problem using grep
-2. Understand the context with view/edit
-3. Apply minimal fix(es)
-4. Validate with syntax/tests
-5. Commit atomically
+### Facades unificadas
+- `core/runner.py` — Orquestração (re-exporta de scanner.py)
+- `core/intel.py` — IA + scoring (re-exporta de ai.py + bounty_scorer.py)
+- `core/state.py` — Baseline + checkpoints (re-exporta de storage.py)
+- `core/output.py` — Notificação + relatório + export
+- `recon/tools.py` — Ferramentas + descoberta de binários
 
-### Completion
-1. Set todo `status = 'done'`
-2. Log any blockers or follow-up work in SQL
+### Documentação
+- `docs/HUNT3R_SPEC.md` — Especificação técnica completa
+- `docs/STATUS.md` — Status operacional atual
+- `docs/CHANGELOG.md` — Histórico de mudanças
+- `docs/IMPROVEMENTS.md` — Resumo de melhorias FASE 1-8
+- `docs/temp/architecture_diagram.md` — Diagramas de arquitetura
 
-### FASE 2 Issues Checklist
+## Padrões de comando
 
-```sql
--- Query: Find next ready todo
-SELECT * FROM todos WHERE status = 'pending' ORDER BY id ASC LIMIT 1;
-
--- Update when starting: UPDATE todos SET status = 'in_progress' WHERE id = 'X';
--- Update when done: UPDATE todos SET status = 'done' WHERE id = 'X';
-```
-
-## File Organization
-
-**Hunt3r Source**:
-- `core/`: Orchestrator, AI client, watchdog, mission runner
-- `recon/`: Engines, JS Hunter, platform APIs
-- `config/`: Settings, secrets, tool paths
-- `main.py`: CLI entry point
-- `tests/`: Unit test suite
-
-**Session Artifacts** (in `/docs/temp/`):
-- `architecture_diagram.md`: 10 Mermaid diagrams
-- `improvements_analysis.md`: 25 issues with solutions
-- `action_plan.md`: Executed FASE 1 steps
-- `execution_summary.md`: FASE 1 metrics and results
-
-## Command Patterns
-
-**Syntax check (fast, always safe)**:
 ```bash
-python -m py_compile core/scanner.py core/watchdog.py
-```
+# Checagem de sintaxe
+python3 -m py_compile core/scanner.py core/watchdog.py
 
-**Find all instances of a pattern**:
-```bash
+# Encontrar padrões
 grep -rn "pattern" core/ recon/ --include="*.py"
+
+# Commit atômico
+git add -A && git commit -m "Fix: descrição" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+
+# Verificar mudanças
+git --no-pager diff HEAD~1 --stat
 ```
 
-**Commit atomic changes**:
-```bash
-git add -A && git commit -m "Fix: brief description" -m "Detailed explanation if needed" --no-edit
-```
+## Workflow Git
 
-**Verify changes before commit**:
-```bash
-git diff HEAD~1 --stat  # See what changed
-git diff HEAD~1         # See exact changes
-```
+Todo commit deve:
+1. Abordar um único problema
+2. Incluir trailer: `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+3. Ter mensagem clara: `Fix: <problema>` ou `Refactor: <arquivo> para <objetivo>`
+4. Passar todos os testes existentes (73 testes)
 
-## Git Workflow
+## Metas de performance
 
-Every commit must:
-1. Address a single issue (one todo = one commit)
-2. Include co-author trailer: `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
-3. Have clear message: `Fix: <issue> in <file>` or `Refactor: <file> for <goal>`
-4. Pass all existing tests
-
-Example:
-```
-Fix: Bare except clause in core/scanner.py _run_tactical_phase()
-
-Replaced generic except with specific ValueError, TimeoutError. Added
-proper logging for debugging. Prevents silent failures in production.
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-```
-
-## Performance Targets
-
-- **Issue fix time**: 15-45 minutes per issue (excluding testing)
-- **Validation time**: 5-10 minutes per fix
-- **Commit time**: <1 minute
-- **Total throughput**: 8-12 issues per FASE (16-20 hours work)
-
-## When to Use Sub-agents
-
-- **explore agent**: For deep codebase questions before starting a fix
-- **task agent**: For running slow tests/builds (move to background)
-- **code-review agent**: After all FASE 2 fixes complete (final quality check)
-
-Minimize sub-agent calls. Caveman Mode prefers direct action over analysis paralysis.
-
-## Session Continuity
-
-If session restarts:
-1. Read plan.md in session folder (updated at phase transitions)
-2. Query SQL `todos` table for current progress
-3. Continue where you left off (no re-analysis needed)
+- **Tempo de fix**: 15-45 minutos por issue
+- **Validação**: 5-10 minutos por fix
+- **Throughput**: 8-12 issues por FASE

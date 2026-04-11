@@ -1,75 +1,70 @@
-# HUNT3R v1.0-EXCALIBUR — Technical Specification (Current)
+# HUNT3R v1.0-EXCALIBUR — Especificação Técnica
 
-## 1. End-to-end execution model
+## 1. Modelo de execução ponta a ponta
 
-1. **Watchdog loop** (`core/watchdog.py`)
-   - Pulls/synchronizes wildcard targets
-   - Prioritizes with unified intel scoring
-   - Executes parallel scans with adaptive sleep per cycle delta
-2. **Mission orchestration** (`core/runner.py` -> `core/scanner.py`)
-   - `ProOrchestrator.start_mission()` -> `MissionRunner.run()`
-3. **Recon phase**
-   - Subfinder -> DNSX -> Uncover -> HTTPX
-4. **Tactical phase**
-   - Katana -> JS Hunter -> Nuclei
-5. **Validation/filtering**
-   - FalsePositiveKiller + ML layer + optional AI validation
-6. **Output/state**
-   - Notifications + markdown report + export + baseline/checkpoints
+1. **Loop Watchdog** (`core/watchdog.py`)
+   - Sincroniza alvos wildcard via bbscope (H1/BC/IT)
+   - Prioriza alvos com scoring unificado (`core/intel.py`)
+   - Executa scans paralelos com sleep adaptativo baseado em métricas de ciclo
+2. **Orquestração de missão** (`core/runner.py` → `core/scanner.py`)
+   - `ProOrchestrator.start_mission()` → `MissionRunner.run()`
+3. **Fase de reconhecimento**
+   - Subfinder → DNSX → Uncover → HTTPX
+4. **Fase tática**
+   - Katana → JS Hunter → Nuclei
+5. **Validação e filtragem**
+   - `FalsePositiveKiller` (7 filtros determinísticos + ML LightGBM) + validação IA opcional
+6. **Saída e estado**
+   - Notificação (Telegram/Discord) + relatório Markdown + exportação + baseline/checkpoints
 
-## 2. Unified module surfaces
+## 2. Superfícies unificadas
 
-- `core/runner.py`: orchestration entrypoint
-- `core/intel.py`: AI client + target scoring entrypoint
-- `core/state.py`: baseline/checkpoint entrypoint
-- `core/output.py`: notify/report/export entrypoint
-- `recon/tools.py`: tool discovery + execution entrypoint
+| Módulo | Responsabilidade |
+|--------|------------------|
+| `core/runner.py` | Ponto de entrada de orquestração |
+| `core/intel.py` | IA + scoring de alvos |
+| `core/state.py` | Baseline e checkpoints |
+| `core/output.py` | Notificação, relatório, exportação |
+| `recon/tools.py` | Descoberta de binários + execução de ferramentas |
 
-Legacy implementation files still back these facades internally, but project imports route through unified surfaces.
+Arquivos de implementação internos ainda funcionam, mas importações do projeto passam pelas superfícies unificadas.
 
-## 3. Terminal UI architecture
+## 3. UI Terminal
 
-`core/ui.py` uses fixed top/bottom zones with synchronized stdout and worker-scoped telemetry:
+`core/ui.py` usa zonas fixas (topo/base) com stdout sincronizado e telemetria por worker:
 
-- `_stdout_lock` serializes terminal writes
-- `_live_view_lock` protects shared live state
-- worker routing via `set_worker_context()`
+- `_stdout_lock` serializa escritas no terminal
+- `_live_view_lock` protege estado compartilhado do live view
+- Roteamento de workers via `set_worker_context()`
+- Guard para terminais pequenos (< 80x24)
 
-Call order in scanner remains:
-
+Ordem de chamada no scanner:
 1. `ui_mission_footer()`
 2. `ui_scan_summary()`
 
-## 4. Pipeline contracts
+## 4. Contratos do pipeline
 
-`MissionRunner` emits explicit phase payloads with:
+`MissionRunner` emite payloads explícitos por fase:
 
-- `ok`
-- `errors`
-- `counts`
-- `paths`
+- `ok` — sucesso da fase
+- `errors` — lista de erros
+- `counts` — contagens de resultados
+- `paths` — caminhos de arquivos gerados
 
-Final mission result includes:
+Resultado final da missão inclui:
+- `phase_results` — resultados por fase
+- `errors` — erros agregados
+- `ok` — sucesso geral
+- `metrics.phase_duration_seconds` — duração por fase
 
-- `phase_results`
-- `errors`
-- `ok`
-- per-phase duration metrics (`metrics.phase_duration_seconds`)
+## 5. Comportamento operacional do Watchdog
 
-## 5. Watchdog operational behavior
+- Workers paralelos configuráveis (`WATCHDOG_WORKERS`)
+- Agregação de métricas por ciclo: alvos alterados, erros, durações médias
+- Sleep adaptativo: ciclos mais rápidos quando há mudanças, mais lentos quando estável
+- Deduplicação temporal de notificações (TTL configurável)
 
-- Parallel workers from `WATCHDOG_WORKERS`
-- Cycle metrics aggregation:
-  - changed targets
-  - non-cached errors
-  - average phase durations
-- Adaptive next sleep window computed from cycle delta/error ratio
-
-## 6. Notification deduplication
-
-Notifier applies temporal dedup cache (`recon/cache/notifier_dedup.json`) with TTL (`NOTIFY_DEDUP_TTL_SECONDS`) to reduce repeated Telegram/Discord alerts for the same artifact.
-
-## 7. Tool flags (implemented)
+## 6. Flags das ferramentas (implementadas)
 
 ```bash
 subfinder  -dL <file> -o <out> -silent -rate-limit=N
@@ -79,13 +74,28 @@ katana     -list <file> -o <out> -silent -rate-limit=N -timeout 15 -depth 2
 nuclei     -l <file> -o <out> -duc -silent -rl N -c 25 -timeout 5 -severity critical,high,medium [-tags tags]
 ```
 
-## 8. Known limitations
+## 7. Filtro de falso positivo (8 camadas)
 
-- Platform API path depends on local `bbscope` and valid credentials
-- Very small terminals can degrade watchdog rendering
-- Very large target sets may require Nuclei timeout tuning
+1. Serviços OOB (interact.sh, oast.fun)
+2. Templates tech/WAF (header-detect, tech-detect)
+3. Fingerprints WAF (patterns cloudflare)
+4. Código-fonte HTML/Script
+5. Strings placeholder/exemplo
+6. Valores nulos/vazios
+7. Micro findings (< 3 chars)
+8. Filtro ML (LightGBM) — opcional, threshold configurável
 
-## 9. Validation baseline
+## 8. Limitações conhecidas
 
-- `python3 -m pytest tests/ -q`
-- Current baseline: **71 passed, 11 subtests passed**
+- APIs de plataforma dependem de `bbscope` e credenciais válidas
+- Terminais muito pequenos podem degradar a renderização do watchdog
+- Alvos com 400+ hosts vivos podem precisar de timeout nuclei ajustado
+- Modelo ML treinado com dados sintéticos — precisa de retraining com dados reais
+
+## 9. Baseline de validação
+
+```bash
+python3 -m pytest tests/ -q
+```
+
+Baseline atual: **73 testes aprovados, 11 subtestes**

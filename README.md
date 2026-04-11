@@ -1,43 +1,54 @@
 # Hunt3r v1.0-EXCALIBUR
 
-Hunt3r is a terminal-first autonomous bug bounty recon pipeline with watchdog execution, deterministic filtering, AI-assisted validation, and operational reporting.
+Pipeline autônomo de bug bounty com execução terminal-first, watchdog 24/7, filtragem determinística (7 camadas + ML), validação por IA e relatórios operacionais.
 
-## Current architecture (slim core)
+## Arquitetura (Slim Core)
 
-- `main.py` — CLI entry point and mode routing
-- `core/runner.py` — unified mission orchestration entry (`MissionRunner`, `ProOrchestrator`)
-- `core/intel.py` — unified intelligence/scoring entry (`AIClient`, `IntelMiner`, bounty scoring)
-- `core/state.py` — unified baseline/checkpoint entry
-- `core/output.py` — unified notifier/reporter/export entry
-- `recon/tools.py` — unified tooling entry (tool discovery + engines)
-- `core/watchdog.py` — adaptive 24/7 loop with cycle metrics
-- `core/ui.py` — full-screen tactical UI
+| Módulo | Responsabilidade |
+|--------|------------------|
+| `main.py` | Ponto de entrada CLI e roteamento de modos |
+| `core/runner.py` | Orquestração unificada (`MissionRunner`, `ProOrchestrator`) |
+| `core/scanner.py` | Pipeline de fases (recon → tática → validação) |
+| `core/intel.py` | IA + scoring unificado (`AIClient`, `IntelMiner`, `BountyScorer`) |
+| `core/state.py` | Baseline e checkpoints |
+| `core/output.py` | Notificação, relatório e exportação |
+| `core/watchdog.py` | Loop adaptativo 24/7 com métricas de ciclo |
+| `core/filter.py` | FalsePositiveKiller (7 filtros + ML) |
+| `core/ui.py` | UI tática fullscreen (Rich Live) |
+| `core/config.py` | Configuração centralizada, timeouts, rate limits |
+| `recon/tools.py` | Descoberta de binários e wrappers de ferramentas |
+| `recon/engines.py` | Execução de subfinder, dnsx, httpx, katana, nuclei |
+| `recon/js_hunter.py` | Extração de segredos em JavaScript |
+| `recon/platforms.py` | APIs H1/BC/IT via bbscope |
 
 ## Pipeline
 
-`WATCHDOG -> DIFF -> Subfinder -> DNSX -> Uncover -> HTTPX -> Katana -> JS Hunter -> Nuclei -> FP Filter -> AI Validation -> Notify -> Report`
+```
+WATCHDOG → DIFF → Subfinder → DNSX → Uncover → HTTPX → Katana → JS Hunter → Nuclei → FP Filter (7+ML) → IA → Notificar → Relatório
+```
 
-## Quick start
+## Início rápido
 
 ```bash
 pip install -r requirements.txt
+cp .env.example .env   # configurar tokens
 python3 main.py
 ```
 
-Useful modes:
+### Modos disponíveis
 
 ```bash
-python3 main.py --watchdog
-python3 main.py --dry-run
-python3 main.py --resume <mission_id>
-python3 main.py --export csv
+python3 main.py              # Menu interativo
+python3 main.py --watchdog   # Modo autônomo 24/7
+python3 main.py --dry-run    # Preview sem executar ferramentas
+python3 main.py --resume ID  # Retomar missão
+python3 main.py --export csv # Exportar findings (csv/xlsx/xml)
 ```
 
-## Validation
+## Validação
 
 ```bash
-python3 -m py_compile core/scanner.py core/watchdog.py core/notifier.py
 python3 -m pytest tests/ -q
 ```
 
-Latest baseline: `71 passed, 11 subtests passed`.
+Baseline atual: **73 testes aprovados, 11 subtestes**.

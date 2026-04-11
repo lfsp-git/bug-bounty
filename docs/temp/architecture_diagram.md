@@ -1,6 +1,6 @@
-# Hunt3r v1.0-EXCALIBUR — Arquitetura Atual (Slim Core)
+# Hunt3r v1.0-EXCALIBUR — Diagrama de Arquitetura
 
-## 1) Arquitetura consolidada (estado atual)
+## 1) Arquitetura consolidada (Slim Core)
 
 ```mermaid
 graph TD
@@ -18,6 +18,7 @@ graph TD
 
     SCN --> TOOLS[recon/tools.py]
     SCN --> FIL[core/filter.py]
+    SCN --> ML[core/ml_filter.py]
     SCN --> OUT
     SCN --> ST
     SCN --> INTEL
@@ -25,24 +26,57 @@ graph TD
     TOOLS --> ENG[recon/engines.py]
     TOOLS --> TD[recon/tool_discovery.py]
     ENG --> JSH[recon/js_hunter.py]
+
+    FIL --> ML
 ```
 
-## 2) Estrutura essencial de arquivos (ativa)
+## 2) Pipeline de execução
 
-| Arquivo alvo | Origem consolidada | Responsabilidade final |
-|---|---|---|
-| `main.py` | `main.py` | CLI, roteamento de modo |
-| `core/runner.py` | `core/scanner.py` + parte de `core/watchdog.py` | Orquestração única (manual + watchdog) |
-| `core/ui.py` | `core/ui.py` | Interface terminal |
-| `core/config.py` | `core/config.py` | Configuração única |
-| `core/intel.py` | `core/ai.py` + `core/bounty_scorer.py` | IA/score/validação centralizados |
-| `core/state.py` | `core/storage.py` | baseline + checkpoint |
-| `core/output.py` | `core/notifier.py` + `core/reporter.py` + `core/export.py` | notificação + relatório + export |
-| `recon/tools.py` | `recon/engines.py` + `recon/tool_discovery.py` | wrappers e descoberta de binários |
+```mermaid
+graph LR
+    W[Watchdog] --> D[Diff Engine]
+    D --> SF[Subfinder]
+    SF --> DN[DNSX]
+    DN --> UN[Uncover]
+    UN --> HX[HTTPX]
+    HX --> KT[Katana]
+    KT --> JS[JS Hunter]
+    JS --> NU[Nuclei]
+    NU --> FP[FP Filter 7+ML]
+    FP --> AI[Validação IA]
+    AI --> NT[Notificação]
+    NT --> RP[Relatório]
+```
 
-## 3) Resultado da consolidação
+## 3) Mapa de arquivos
 
-- Interfaces unificadas em produção (`runner/state/output/intel/tools`).
-- Pipeline com contratos explícitos por fase (`ok/errors/counts/paths`).
-- Watchdog adaptativo com métricas operacionais por ciclo.
-- Deduplicação temporal de notificações para reduzir ruído.
+| Arquivo | Linhas | Responsabilidade |
+|---------|--------|------------------|
+| `main.py` | ~293 | CLI, roteamento de modos |
+| `core/scanner.py` | ~771 | MissionRunner + ProOrchestrator |
+| `core/ui.py` | ~805 | UI tática fullscreen (Rich Live) |
+| `core/watchdog.py` | ~354 | Loop 24/7 adaptativo |
+| `core/config.py` | ~229 | Configuração centralizada |
+| `core/filter.py` | ~112 | FalsePositiveKiller (7 camadas) |
+| `core/ml_filter.py` | ~225 | Filtro ML (LightGBM) |
+| `core/notifier.py` | ~358 | Telegram/Discord + dedup temporal |
+| `core/ai.py` | ~251 | AIClient + IntelMiner (OpenRouter) |
+| `core/bounty_scorer.py` | ~269 | Scoring de programas |
+| `core/reporter.py` | ~240 | Relatórios Markdown |
+| `core/export.py` | ~185 | CSV/XLSX/XML + dry-run |
+| `core/storage.py` | ~184 | ReconDiff + CheckpointManager |
+| `core/updater.py` | ~219 | PDTM + nuclei-templates |
+| `recon/engines.py` | ~266 | Wrappers de ferramentas |
+| `recon/js_hunter.py` | ~160 | Extração de segredos JS |
+| `recon/platforms.py` | ~243 | APIs H1/BC/IT |
+| `recon/tech_detector.py` | ~307 | Detecção de tecnologias |
+
+## 4) Facades unificadas
+
+| Facade | Consolida | Exporta |
+|--------|-----------|---------|
+| `core/runner.py` | scanner.py | `MissionRunner`, `ProOrchestrator` |
+| `core/intel.py` | ai.py + bounty_scorer.py | `AIClient`, `IntelMiner`, `score_program` |
+| `core/state.py` | storage.py | `ReconDiff`, `CheckpointManager`, `resume_mission` |
+| `core/output.py` | notifier + reporter + export | `NotificationDispatcher`, `BugBountyReporter`, `ExportFormatter` |
+| `recon/tools.py` | engines.py + tool_discovery.py | `find_tool`, `run_subfinder`, `run_nuclei`, etc. |

@@ -1,28 +1,35 @@
-# Hunt3r Plan — Runtime Alignment (Refreshed)
+# Hunt3r — Plano Operacional
 
-## Objective
+## Objetivo
 
-Align tool execution, watchdog coworkers, and UI throughput with actual VPS capacity while keeping reliability high.
+Manter o Hunt3r operando com máxima eficiência, mínimo falso positivo e execução autônoma confiável.
 
-## Completed in this update
+## Perfil da VPS
 
-1. Hardware-aware runtime tuning added in `core/config.py`.
-2. Watchdog worker count now sourced from config (`WATCHDOG_WORKERS`) instead of hardcoded value.
-3. Worker slot queue now honors effective worker limit.
-4. Legacy pytest warnings fixed in `tests/test_improvements.py` by replacing return-based tests with assertions.
-5. Prompt context updated (`Prompt.md`) to reflect current architecture and VPS profile.
-
-## Current operating profile (this VPS)
-
-- CPU: 4c/4t
+- CPU: 4 cores / 4 threads (Broadwell virtualizado)
 - RAM: 8 GB
-- Workers: 3
-- Core rate limits tuned for balanced throughput vs stability.
+- Disco: ~161 GB (volume ext4 148 GB)
 
-## Next operational checks
+## Configuração de runtime (auto-tuning)
 
-1. Run watchdog for extended cycle and compare error/snapshot rates.
-2. Monitor nuclei saturation under high target volume.
-3. Validate API collection path when bbscope is available.
-4. Tune timeouts only if sustained overload appears in logs.
+Para este perfil (4c/8GB):
+- `RATE_LIMIT = 80`
+- `NUCLEI_RATE_LIMIT = 120`
+- `NUCLEI_CONCURRENCY = 25`
+- `WATCHDOG_WORKERS = 3`
+
+## Próximos passos operacionais
+
+1. Instalar `bbscope` e validar coleta de alvos via APIs H1/BC/IT
+2. Executar watchdog em ciclo estendido e monitorar taxa de erro/snapshot
+3. Coletar findings reais para retraining do modelo ML
+4. Ajustar timeouts conforme saturação observada nos logs
+
+## Verificação rápida
+
+```bash
+python3 -m py_compile core/config.py core/watchdog.py core/scanner.py
+python3 -m pytest tests/ -q
+python3 main.py --watchdog
+```
 

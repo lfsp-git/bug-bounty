@@ -1,42 +1,33 @@
-# Hunt3r Prompt — Current Session Context (Updated)
+# Hunt3r — Contexto de Sessão
 
-## State now
+## Estado atual
 
-- FASE 1-8 delivered.
-- Watchdog tactical UI active with 3-panel worker view.
-- Worker/thread routing stabilized.
-- Engine non-interactive false-skip fixed.
-- Docs refreshed to current architecture.
+- FASE 1-8 entregues + Slim Core consolidado
+- Watchdog tático com UI Rich Live ativo
+- Pipeline estabilizado com contratos explícitos por fase
+- Filtro FP 8 camadas (7 determinísticas + ML)
+- 73 testes aprovados, 0 falhas
 
-## VPS profile (from attached hardware docs)
+## Perfil da VPS
 
-- CPU: 4 cores / 4 threads (Broadwell virtualized)
+- CPU: 4 cores / 4 threads (Broadwell virtualizado)
 - RAM: 8 GB
-- Disk: ~161 GB (148 GB ext4 volume)
+- Disco: ~161 GB
 
-## Runtime tuning policy
+## Tuning de runtime
 
-Hardware-aware defaults in `core/config.py` now auto-tune:
+Defaults automáticos em `core/config.py`:
+- Nós pequenos (≤2 cores ou ≤4 GB): conservador
+- Nós médios (≤4 cores ou ≤8 GB): balanceado
+- Nós maiores: maior throughput
 
-- Small nodes (<=2 cores or <=4 GB): conservative
-- Mid nodes (<=4 cores or <=8 GB): balanced
-- Bigger nodes: higher throughput
-
-For this VPS (4c/8GB) target profile:
-
+Para esta VPS (4c/8GB):
 - `RATE_LIMIT = 80`
 - `NUCLEI_RATE_LIMIT = 120`
 - `NUCLEI_CONCURRENCY = 25`
-- `WATCHDOG_WORKERS = 3` (bounded by CPU)
+- `WATCHDOG_WORKERS = 3`
 
-## Immediate goals
-
-1. Keep watchdog stable under long-running cycles.
-2. Preserve UI alignment with dense activity logs.
-3. Maintain low false-positive rate with ML layer.
-4. Keep tests green and warnings-free.
-
-## Quick verify
+## Verificação rápida
 
 ```bash
 python3 -m py_compile core/config.py core/watchdog.py core/scanner.py recon/engines.py
@@ -46,8 +37,7 @@ python3 main.py --watchdog
 
 ## Guardrails
 
-- No silent failures.
-- No broad behavior changes outside performance/scheduling.
-- Keep commits atomic and test-backed.
-- If changing operational defaults, update docs in same commit.
+- Sem falhas silenciosas
+- Commits atômicos e com testes
+- Atualizar docs no mesmo commit quando mudar defaults operacionais
 

@@ -1,94 +1,68 @@
-# Hunt3r Changelog
+# Hunt3r — Changelog
 
-## 2026-04-10 — Slim Core consolidation + release hardening
+## 2026-04-11 — Correção de TypeError no BountyScorer
 
-### `f66ba69`
-- Added release-hardening tests for unified module contracts:
-  - `core.runner`
-  - `core.state`
-  - `core.output`
-  - `recon.tools`
-- Added notifier dedup cache roundtrip tests.
-- Migrated notifier UTC usage to timezone-aware UTC.
+### `f3155ff`
+- Guard de tipo para `bounty_range` com elementos `None` (ex: `(None, None)`)
+- Guard de tipo para `last_found` com valores truthy não-numéricos
+- Guard de tipo para `created_at` com valor `None` explícito
+- Previne crash `float - NoneType` na priorização de alvos do watchdog
 
-### `e71fe99`
-- Watchdog: adaptive sleep strategy based on cycle delta/error metrics.
-- Scanner: phase duration metrics surfaced in mission results.
-- Notifier: temporal deduplication cache for Telegram/Discord alert spam reduction.
+## 2026-04-10 — Slim Core + Hardening operacional
 
-### `14987f0`
-- Created `core/intel.py` as unified intelligence/scoring facade.
-- Rewired scanner/main/watchdog imports to unified intel surface.
-- Fixed Micro FP filter over-filtering when `extracted-results` is absent.
+### `1844105` Edge cases
+- Guard para terminal pequeno (< 80x24): fallback para `Live(screen=False)`
+- Timeout adaptativo do Nuclei: escala para 5400s quando inputs >= 400
 
-### `cdfd64e`
-- Standardized scanner phase I/O contracts (`ok/errors/counts/paths`).
-- Added explicit phase error propagation in mission results.
-- Normalized URL/JSONL read paths for predictable pipeline behavior.
+### `a8da7ff` Limpeza e alinhamento
+- Removidos stubs legados: `core/ai_client.py`, `core/orchestrator.py`
+- Todos os testes migrados para superfícies unificadas
+- Documentação reescrita (README, SPEC, STATUS)
 
-### `ab859d1`
-- Introduced unified facade modules:
-  - `core/runner.py`
-  - `core/state.py`
-  - `core/output.py`
-  - `recon/tools.py`
-- Rewired runtime imports to unified surfaces with backward-safe behavior.
+### `f66ba69` Hardening de release (Fase E)
+- Testes de contrato para módulos unificados (`runner/state/output/tools`)
+- Teste de roundtrip do cache de dedup do notificador
+- Migração para UTC timezone-aware
 
-### Cleanup
-- Removed unused legacy stubs:
-  - `core/ai_client.py`
-  - `core/orchestrator.py`
-- Added `recon/cache/` to `.gitignore` (runtime dedup cache).
+### `e71fe99` Watchdog adaptativo (Fase D)
+- Sleep adaptativo baseado em delta/erro do ciclo
+- Métricas de duração por fase no resultado da missão
+- Cache de deduplicação temporal para Telegram/Discord
 
----
+### `14987f0` Intel unificado (Fase C)
+- `core/intel.py` como facade de inteligência/scoring
+- Correção do filtro Micro FP (não elimina findings sem `extracted-results`)
 
-## 2026-04-10 — Tactical watchdog UI stabilization + telemetry alignment
+### `cdfd64e` Pipeline I/O (Fase B)
+- Contratos padronizados por fase (`ok/errors/counts/paths`)
+- Propagação explícita de erros por fase
+- Caminhos de leitura URL/JSONL normalizados
+
+### `ab859d1` Módulos unificados (Fase A)
+- Facades: `core/runner.py`, `core/state.py`, `core/output.py`, `recon/tools.py`
+- Importações de runtime rewired para superfícies unificadas
+
+## 2026-04-10 — UI tática do watchdog
 
 ### `c7e1084`
-- Improved watchdog execution-to-UI alignment:
-  - Worker slot mapping now uses queue-based assignment (prevents worker label drift)
-  - Added top banner operational counters (`RUN`, `DONE`, `ERR`)
-  - Added semantic coloring in activity log for rapid triage
+- Mapeamento de workers com fila (evita drift de labels)
+- Contadores operacionais no banner (`RUN`, `DONE`, `ERR`)
+- Coloração semântica no log de atividade
 
 ### `14d2c57`
-- Full tactical dashboard refactor:
-  - Rich Live full-screen UI (`screen=True`)
-  - 3 worker panels (`W1/W2/W3`) with per-tool progress
-  - Rolling activity log panel
-  - Thread-local worker context and per-worker routing
-  - Auto-snapshot on worker-level failures
+- Dashboard tático fullscreen (Rich Live `screen=True`)
+- 3 painéis de worker (`W1/W2/W3`) com progresso por ferramenta
+- Painel de log de atividade com rolagem
+- Contexto thread-local e snapshot automático em falhas
 
-### `9d2fbd9`
-- Military-grade watchdog live view rollout:
-  - New panel architecture and execution visibility
-  - Baseline worker telemetry and session stats
-  - Core UI/scanner/watchdog wiring for concurrent rendering
+## 2026-04-10 — FASE 8: Filtro ML de falso positivo
 
-### `8d29e27`
-- Silent failure fix in watchdog:
-  - `ui_mission_footer` optional stats arg fix
-  - Prevented `tool_times.json` updates during watchdog mode
+### `c5b1a98` + `b5e6c09`
+- Camada ML integrada ao pipeline FP (LightGBM)
+- Pipeline de treinamento: extração → labeling → augmentação → treino
+- Modelo: `models/fp_filter_v1.pkl` (8 features, 201 amostras)
+- Config: `ML_FILTER_ENABLED`, `ML_CONFIDENCE_THRESHOLD`
 
 ---
 
-## 2026-04-10 — FASE 8 ML false-positive layer
-
-### `b5e6c09`
-- Integrated ML filter into FP pipeline
-- Added config knobs and integration docs
-
-### `c5b1a98`
-- Added training/data prep pipeline for ML filter
-- Generated model artifacts and validation outputs
-
----
-
-## Historical notes
-
-The repository previously tracked phase-by-phase history in detail (FASE 1..7).
-That implementation history remains visible in git log and in:
-
-- `PLAN.md`
-- `FASE8_SUMMARY.md`
-
-This changelog now focuses on current operationally relevant releases.
+Histórico completo de FASE 1-7 visível no git log.
