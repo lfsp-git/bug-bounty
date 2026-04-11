@@ -74,10 +74,9 @@ class ToolUpdater:
         return resolved != binary or shutil.which(binary) is not None
 
     def _log_updater(self, msg: str):
-        """Write to stdout and buffer for snapshots."""
+        """Write to stdout only (no duplicate ui_log)."""
         sys.stdout.write(msg)
         sys.stdout.flush()
-        _buffer_append("UPDATER", msg.strip())
 
     def update_all(self, force=False) -> Dict[str,bool]:
         res = {}

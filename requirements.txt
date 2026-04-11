@@ -13,3 +13,4 @@ openpyxl
 numpy
 lightgbm>=3.3.0
 scikit-learn
+pytest
