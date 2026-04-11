@@ -290,11 +290,11 @@ def check_imports(filename):
     
     print(f'Imports found: {len(imports)}')
 
-check_imports('core/orchestrator.py')
+check_imports('core/scanner.py')
 "
 
 # Syntax check
-python3 -m py_compile core/orchestrator.py
+python3 -m py_compile core/scanner.py
 ```
 
 ---

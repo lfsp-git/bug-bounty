@@ -52,7 +52,7 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
                 mock_thread.return_value.join = lambda: None
                 wd._fetch_global_wildcards()
         # Just verify no exception raised and path resolution is called
-        from recon.tool_discovery import find_tool
+        from recon.tools import find_tool
         self.assertIsNotNone(find_tool)
 
     def test_compute_next_sleep_seconds_returns_int(self):
@@ -93,7 +93,7 @@ class TestDryRunPipeline(unittest.TestCase):
 
     def test_export_formatter_csv(self):
         """ExportFormatter.to_csv() creates a valid CSV file."""
-        from core.export import ExportFormatter
+        from core.output import ExportFormatter
         findings = [
             {"template-id": "sqli-001", "severity": "high", "host": "https://example.com"},
             {"template-id": "xss-002", "severity": "medium", "host": "https://sub.example.com"},
@@ -108,7 +108,7 @@ class TestDryRunPipeline(unittest.TestCase):
 
     def test_export_formatter_xml(self):
         """ExportFormatter.to_xml() creates a valid XML file."""
-        from core.export import ExportFormatter
+        from core.output import ExportFormatter
         findings = [{"template-id": "lfi-003", "severity": "critical", "host": "https://example.com"}]
         fmt = ExportFormatter()
         xml_path = os.path.join(self.tmpdir, "test.xml")
@@ -119,14 +119,14 @@ class TestDryRunPipeline(unittest.TestCase):
 
     def test_export_unknown_format_returns_empty(self):
         """ExportFormatter.export() returns '' for unknown format."""
-        from core.export import ExportFormatter
+        from core.output import ExportFormatter
         fmt = ExportFormatter()
         result = fmt.export([{"template-id": "x"}], "pdf")
         self.assertEqual(result, "")
 
     def test_storage_checkpoint_roundtrip(self):
         """CheckpointManager save/load cycle works without errors."""
-        from core.storage import CheckpointManager
+        from core.state import CheckpointManager
         cm = CheckpointManager()
         data = {"progress": {"phase": 3}, "findings": [], "completed_targets": []}
         ok = cm.save("test_integ_handle", data)
@@ -151,7 +151,7 @@ class TestDryRunPipeline(unittest.TestCase):
 
     def test_recon_diff_baseline_roundtrip(self):
         """ReconDiff save/load baseline cycle preserves data."""
-        from core.storage import ReconDiff
+        from core.state import ReconDiff
         data = {"subdomains": 10, "endpoints": 25, "vulns": 2}
         with patch("core.storage.BASELINES_DIR", self.tmpdir):
             ReconDiff.save_baseline("testhandle_integ", data)
@@ -160,7 +160,7 @@ class TestDryRunPipeline(unittest.TestCase):
 
     def test_notification_dispatcher_no_real_http(self):
         """NotificationDispatcher.alert_nuclei() routes critical findings to Telegram."""
-        from core.notifier import NotificationDispatcher
+        from core.output import NotificationDispatcher
         with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
             json.dump({"template-id": "test-cve", "severity": "critical", "matched-at": "https://example.com"}, f)
             f.write("\n")

@@ -1,5 +1,47 @@
 # Hunt3r Changelog
 
+## 2026-04-10 — Slim Core consolidation + release hardening
+
+### `f66ba69`
+- Added release-hardening tests for unified module contracts:
+  - `core.runner`
+  - `core.state`
+  - `core.output`
+  - `recon.tools`
+- Added notifier dedup cache roundtrip tests.
+- Migrated notifier UTC usage to timezone-aware UTC.
+
+### `e71fe99`
+- Watchdog: adaptive sleep strategy based on cycle delta/error metrics.
+- Scanner: phase duration metrics surfaced in mission results.
+- Notifier: temporal deduplication cache for Telegram/Discord alert spam reduction.
+
+### `14987f0`
+- Created `core/intel.py` as unified intelligence/scoring facade.
+- Rewired scanner/main/watchdog imports to unified intel surface.
+- Fixed Micro FP filter over-filtering when `extracted-results` is absent.
+
+### `cdfd64e`
+- Standardized scanner phase I/O contracts (`ok/errors/counts/paths`).
+- Added explicit phase error propagation in mission results.
+- Normalized URL/JSONL read paths for predictable pipeline behavior.
+
+### `ab859d1`
+- Introduced unified facade modules:
+  - `core/runner.py`
+  - `core/state.py`
+  - `core/output.py`
+  - `recon/tools.py`
+- Rewired runtime imports to unified surfaces with backward-safe behavior.
+
+### Cleanup
+- Removed unused legacy stubs:
+  - `core/ai_client.py`
+  - `core/orchestrator.py`
+- Added `recon/cache/` to `.gitignore` (runtime dedup cache).
+
+---
+
 ## 2026-04-10 — Tactical watchdog UI stabilization + telemetry alignment
 
 ### `c7e1084`
@@ -50,4 +92,3 @@ That implementation history remains visible in git log and in:
 - `FASE8_SUMMARY.md`
 
 This changelog now focuses on current operationally relevant releases.
-

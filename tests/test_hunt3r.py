@@ -107,14 +107,14 @@ class TestConfig(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestStorage(unittest.TestCase):
     def test_recon_diff_returns_empty_on_no_baseline(self):
-        from core.storage import ReconDiff
+        from core.state import ReconDiff
 
         diff = ReconDiff.compute_diff("__test_handle_xyz__", {"a.com"}, {"http://a.com"})
         self.assertFalse(diff["has_changes"])
         self.assertEqual(diff["added_subs"], set())
 
     def test_recon_diff_save_and_load(self):
-        from core.storage import ReconDiff
+        from core.state import ReconDiff
 
         handle = "__test_hunt3r_diff__"
         data = {"subdomains": ["a.com", "b.com"], "endpoints": ["http://a.com"], "js_secrets": []}
@@ -127,7 +127,7 @@ class TestStorage(unittest.TestCase):
             os.remove(path)
 
     def test_recon_diff_detects_added(self):
-        from core.storage import ReconDiff
+        from core.state import ReconDiff
 
         handle = "__test_hunt3r_added__"
         old = {"subdomains": ["a.com"], "endpoints": [], "js_secrets": []}
@@ -140,7 +140,7 @@ class TestStorage(unittest.TestCase):
             os.remove(path)
 
     def test_checkpoint_save_and_load(self):
-        from core.storage import CheckpointManager
+        from core.state import CheckpointManager
 
         cm = CheckpointManager()
         mission_id = "__test_mission_unit__"
@@ -153,7 +153,7 @@ class TestStorage(unittest.TestCase):
         cm.delete(mission_id)
 
     def test_checkpoint_load_missing_returns_none(self):
-        from core.storage import CheckpointManager
+        from core.state import CheckpointManager
 
         cm = CheckpointManager()
         result = cm.load("nonexistent-mission-zzz999")
@@ -245,7 +245,7 @@ class TestExport(unittest.TestCase):
         ]
 
     def test_export_csv(self):
-        from core.export import ExportFormatter
+        from core.output import ExportFormatter
 
         formatter = ExportFormatter()
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tf:
@@ -260,7 +260,7 @@ class TestExport(unittest.TestCase):
                     os.unlink(tf.name)
 
     def test_export_xml(self):
-        from core.export import ExportFormatter
+        from core.output import ExportFormatter
 
         formatter = ExportFormatter()
         with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tf:
@@ -275,7 +275,7 @@ class TestExport(unittest.TestCase):
                     os.unlink(tf.name)
 
     def test_export_invalid_format_returns_empty(self):
-        from core.export import ExportFormatter
+        from core.output import ExportFormatter
 
         formatter = ExportFormatter()
         out = formatter.export(self._sample_findings(), "pdf")
@@ -287,14 +287,14 @@ class TestExport(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestAI(unittest.TestCase):
     def test_ai_client_instantiates(self):
-        from core.ai import AIClient
+        from core.intel import AIClient
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key-123"}):
             client = AIClient()
             self.assertEqual(client.api_key, "test-key-123")
 
     def test_ai_client_no_key(self):
-        from core.ai import AIClient
+        from core.intel import AIClient
 
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("OPENROUTER_API_KEY", None)
@@ -302,7 +302,7 @@ class TestAI(unittest.TestCase):
             self.assertFalse(bool(client.api_key))
 
     def test_intel_miner_instantiates(self):
-        from core.ai import AIClient, IntelMiner
+        from core.intel import AIClient, IntelMiner
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key-123"}):
             ai = AIClient()
@@ -315,7 +315,7 @@ class TestAI(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestNotifier(unittest.TestCase):
     def test_notifier_config_telegram(self):
-        from core.notifier import NotifierConfig
+        from core.output import NotifierConfig
 
         with patch.dict(
             os.environ,
@@ -328,7 +328,7 @@ class TestNotifier(unittest.TestCase):
             self.assertEqual(result, ("123:abc", "456"))
 
     def test_notifier_config_telegram_missing(self):
-        from core.notifier import NotifierConfig
+        from core.output import NotifierConfig
 
         env = {k: v for k, v in os.environ.items() if k not in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")}
         with patch.dict(os.environ, env, clear=True):
@@ -336,7 +336,7 @@ class TestNotifier(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_alert_nuclei_classmethod_exists(self):
-        from core.notifier import NotificationDispatcher
+        from core.output import NotificationDispatcher
 
         self.assertTrue(callable(NotificationDispatcher.alert_nuclei))
 
@@ -355,7 +355,7 @@ class TestNotifier(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestReporter(unittest.TestCase):
     def test_reporter_generates_markdown(self):
-        from core.reporter import BugBountyReporter
+        from core.output import BugBountyReporter
 
         with tempfile.TemporaryDirectory() as td:
             reporter = BugBountyReporter(handle="test-hunter")
@@ -389,7 +389,7 @@ class TestReporter(unittest.TestCase):
 class TestDryRun(unittest.TestCase):
     def test_dry_run_importable(self):
         """run_dry_run must be importable and callable without crashing on import."""
-        from core.export import run_dry_run
+        from core.output import run_dry_run
         self.assertTrue(callable(run_dry_run))
 
 

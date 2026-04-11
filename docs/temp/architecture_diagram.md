@@ -1,66 +1,48 @@
-# Hunt3r v1.0-EXCALIBUR — Architecture Diagram
+# Hunt3r v1.0-EXCALIBUR — Arquitetura Atual (Slim Core)
+
+## 1) Arquitetura consolidada (estado atual)
 
 ```mermaid
 graph TD
-    CLI[main.py CLI] --> |--watchdog| WD[WatchdogLoop]
-    CLI --> |--target / menu| PO[ProOrchestrator]
-    CLI --> |--dry-run| DR[run_dry_run]
-    CLI --> |--export| EX[ExportFormatter]
+    CLI[main.py] --> RUN[core/runner.py]
+    CLI --> INTEL[core/intel.py]
+    CLI --> OUT[core/output.py]
+    CLI --> ST[core/state.py]
+    CLI --> WD[core/watchdog.py]
+    CLI --> UI[core/ui.py]
+    CLI --> CFG[core/config.py]
 
-    WD --> |ciclo 4-6h| PM[PlatformManager]
-    PM --> H1[H1Platform]
-    PM --> BC[BCPlatform]
-    PM --> IT[ITigriti]
+    RUN --> SCN[core/scanner.py]
+    WD --> RUN
+    WD --> INTEL
 
-    PM --> |wildcards| RD[ReconDiff]
-    RD --> |novos targets| PO
+    SCN --> TOOLS[recon/tools.py]
+    SCN --> FIL[core/filter.py]
+    SCN --> OUT
+    SCN --> ST
+    SCN --> INTEL
 
-    PO --> MR[MissionRunner]
-
-    MR --> RP[_run_recon_phase]
-    RP --> SF[subfinder]
-    RP --> DX[dnsx]
-    RP --> UC[uncover]
-    RP --> HX[httpx]
-
-    MR --> VP[_run_vulnerability_phase]
-    VP --> KT[katana]
-    VP --> JS[js_hunter]
-    VP --> NC[nuclei]
-    VP --> FP[FalsePositiveKiller]
-    VP --> AI[IntelMiner / AIClient]
-
-    MR --> NR[_notify_and_report]
-    NR --> ND[NotificationDispatcher]
-    NR --> BR[BugBountyReporter]
-
-    ND --> TG[Telegram - Critical/High/Medium]
-    ND --> DC[Discord - Low/Info]
-    BR --> RPT[reports/ - Markdown]
-
-    MR --> CS[CheckpointManager]
-    MR --> RD2[ReconDiff.save_baseline]
+    TOOLS --> ENG[recon/engines.py]
+    TOOLS --> TD[recon/tool_discovery.py]
+    ENG --> JSH[recon/js_hunter.py]
 ```
 
-## Módulos ativos (16 arquivos Python)
+## 2) Estrutura essencial de arquivos (ativa)
 
-| Módulo | Linhas | Responsabilidade |
-|--------|--------|-----------------|
-| `core/config.py` | ~185 | Constantes, timeouts, rate limiter, dedup, validação |
-| `core/ai.py` | ~240 | AIClient (OpenRouter) + IntelMiner |
-| `core/storage.py` | ~165 | ReconDiff + CheckpointManager |
-| `core/export.py` | ~160 | ExportFormatter CSV/XLSX/XML + run_dry_run |
-| `core/ui.py` | ~395 | Terminal UI, live view, threading.RLock |
-| `core/filter.py` | ~120 | FalsePositiveKiller (6 filtros) |
-| `core/scanner.py` | ~320 | MissionRunner + ProOrchestrator |
-| `core/notifier.py` | ~280 | NotificationDispatcher Telegram + Discord |
-| `core/reporter.py` | ~200 | BugBountyReporter → Markdown |
-| `core/watchdog.py` | ~260 | Loop 24/7 autônomo |
-| `core/updater.py` | ~180 | PDTM + nuclei-templates |
-| `recon/engines.py` | ~200 | Wrappers 6 ferramentas PD |
-| `recon/js_hunter.py` | ~160 | Extração real JS secrets |
-| `recon/platforms.py` | ~243 | APIs H1/BC/IT |
-| `recon/tool_discovery.py` | ~57 | find_tool() com cache |
-| `main.py` | ~281 | Entry point CLI |
+| Arquivo alvo | Origem consolidada | Responsabilidade final |
+|---|---|---|
+| `main.py` | `main.py` | CLI, roteamento de modo |
+| `core/runner.py` | `core/scanner.py` + parte de `core/watchdog.py` | Orquestração única (manual + watchdog) |
+| `core/ui.py` | `core/ui.py` | Interface terminal |
+| `core/config.py` | `core/config.py` | Configuração única |
+| `core/intel.py` | `core/ai.py` + `core/bounty_scorer.py` | IA/score/validação centralizados |
+| `core/state.py` | `core/storage.py` | baseline + checkpoint |
+| `core/output.py` | `core/notifier.py` + `core/reporter.py` + `core/export.py` | notificação + relatório + export |
+| `recon/tools.py` | `recon/engines.py` + `recon/tool_discovery.py` | wrappers e descoberta de binários |
 
-**Total**: ~3600 linhas em 16 arquivos Python ativos.
+## 3) Resultado da consolidação
+
+- Interfaces unificadas em produção (`runner/state/output/intel/tools`).
+- Pipeline com contratos explícitos por fase (`ok/errors/counts/paths`).
+- Watchdog adaptativo com métricas operacionais por ciclo.
+- Deduplicação temporal de notificações para reduzir ruído.

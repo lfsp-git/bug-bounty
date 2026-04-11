@@ -82,7 +82,7 @@ SELECT * FROM todos WHERE status = 'pending' ORDER BY id ASC LIMIT 1;
 
 **Syntax check (fast, always safe)**:
 ```bash
-python -m py_compile core/orchestrator.py core/watchdog.py
+python -m py_compile core/scanner.py core/watchdog.py
 ```
 
 **Find all instances of a pattern**:
@@ -111,7 +111,7 @@ Every commit must:
 
 Example:
 ```
-Fix: Bare except clause in core/orchestrator.py _run_tactical_phase()
+Fix: Bare except clause in core/scanner.py _run_tactical_phase()
 
 Replaced generic except with specific ValueError, TimeoutError. Added
 proper logging for debugging. Prevents silent failures in production.

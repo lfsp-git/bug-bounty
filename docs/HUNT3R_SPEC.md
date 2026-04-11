@@ -3,99 +3,73 @@
 ## 1. End-to-end execution model
 
 1. **Watchdog loop** (`core/watchdog.py`)
-   - Pulls target wildcards (cache-aware)
-   - Prioritizes by bounty potential
-   - Executes up to 3 scans in parallel
-2. **Mission orchestration** (`core/scanner.py`)
+   - Pulls/synchronizes wildcard targets
+   - Prioritizes with unified intel scoring
+   - Executes parallel scans with adaptive sleep per cycle delta
+2. **Mission orchestration** (`core/runner.py` -> `core/scanner.py`)
    - `ProOrchestrator.start_mission()` -> `MissionRunner.run()`
 3. **Recon phase**
    - Subfinder -> DNSX -> Uncover -> HTTPX
 4. **Tactical phase**
    - Katana -> JS Hunter -> Nuclei
 5. **Validation/filtering**
-   - FalsePositiveKiller + ML filter layer
-6. **Output**
-   - Notifications + markdown report + baseline persistence
+   - FalsePositiveKiller + ML layer + optional AI validation
+6. **Output/state**
+   - Notifications + markdown report + export + baseline/checkpoints
 
-## 2. Terminal UI architecture (active implementation)
+## 2. Unified module surfaces
 
-`core/ui.py` uses Rich Live with full-screen rendering:
+- `core/runner.py`: orchestration entrypoint
+- `core/intel.py`: AI client + target scoring entrypoint
+- `core/state.py`: baseline/checkpoint entrypoint
+- `core/output.py`: notify/report/export entrypoint
+- `recon/tools.py`: tool discovery + execution entrypoint
 
-- **Mode**: `Live(..., screen=True, refresh_per_second=4)`
-- **Sections**:
-  - Banner (runtime/cycle/telemetry)
-  - 3 worker panels (`W1/W2/W3`) side-by-side
-  - Activity log panel (rolling events)
-- **Synchronization**:
-  - `_workers_lock` (`RLock`) for worker state
-  - `_activity_lock` for timeline log
-  - `_stdout_lock` for single-mode terminal writes
-- **Worker routing**:
-  - Thread-local identity via `set_worker_context()`
-  - Worker slot queue in watchdog for stable thread->panel mapping
+Legacy implementation files still back these facades internally, but project imports route through unified surfaces.
 
-### Banner telemetry
+## 3. Terminal UI architecture
 
-Top bar exposes:
+`core/ui.py` uses fixed top/bottom zones with synchronized stdout and worker-scoped telemetry:
 
-- Current clock
-- Cycle counter
-- Session runtime
-- Total scanned
-- `RUN / DONE / ERR` counters
+- `_stdout_lock` serializes terminal writes
+- `_live_view_lock` protects shared live state
+- worker routing via `set_worker_context()`
 
-### Worker panel content
+Call order in scanner remains:
 
-Each worker panel shows:
+1. `ui_mission_footer()`
+2. `ui_scan_summary()`
 
-- Target + `[idx/total]` + elapsed
-- Tool rows: status symbol, tool name, progress bar, per-tool info
-- Nuclei request telemetry (`done/total`, `rps`, `hits`)
-- Mission metrics footer (`SUB`, `LV`, `EP`, `SEC`, `VN`)
+## 4. Pipeline contracts
 
-### Activity log semantics
+`MissionRunner` emits explicit phase payloads with:
 
-Event feed includes `[WID] MODULE message` with semantic coloring:
+- `ok`
+- `errors`
+- `counts`
+- `paths`
 
-- red: errors/abort
-- yellow: warning/anomaly
-- green: result/success
-- cyan: watchdog/mission lifecycle
+Final mission result includes:
 
-## 3. Watchdog parallelism details
+- `phase_results`
+- `errors`
+- `ok`
+- per-phase duration metrics (`metrics.phase_duration_seconds`)
 
-`run_watchdog()`:
+## 5. Watchdog operational behavior
 
-- Disables tool-time writes in watchdog scans (`_RECORD_TOOL_TIMES = False`)
-- Starts live tactical UI once
-- For each cycle:
-  - updates cycle counter (`ui_cycle_started()`)
-  - fetches + prioritizes targets
-- dispatches tasks to `ThreadPoolExecutor(max_workers=3)`
+- Parallel workers from `WATCHDOG_WORKERS`
+- Cycle metrics aggregation:
+  - changed targets
+  - non-cached errors
+  - average phase durations
+- Adaptive next sleep window computed from cycle delta/error ratio
 
-### Capacity-aware worker sizing
+## 6. Notification deduplication
 
-Watchdog workers are now driven by `core/config.py` (`WATCHDOG_WORKERS`) instead of a hardcoded constant.
-Worker-slot queue is initialized with the effective worker count so panel/work assignment stays consistent.
+Notifier applies temporal dedup cache (`recon/cache/notifier_dedup.json`) with TTL (`NOTIFY_DEDUP_TTL_SECONDS`) to reduce repeated Telegram/Discord alerts for the same artifact.
 
-`_scan_target_parallel_wrapper()`:
-
-- Acquires worker slot from queue (`W1/W2/W3`)
-- Binds current thread to that slot
-- Registers worker mission in UI
-- Runs scan + records scan history
-- Emits snapshot on exceptions
-- Releases worker slot back to queue in `finally`
-
-## 4. Filtering model (current)
-
-FalsePositiveKiller pipeline now includes ML-based decisioning:
-
-- Legacy deterministic filters remain
-- ML model acts as final layer (FASE 8 integration)
-- Model artifact: `models/fp_filter_v1.pkl`
-
-## 5. Tool flags (as implemented)
+## 7. Tool flags (implemented)
 
 ```bash
 subfinder  -dL <file> -o <out> -silent -rate-limit=N
@@ -105,38 +79,13 @@ katana     -list <file> -o <out> -silent -rate-limit=N -timeout 15 -depth 2
 nuclei     -l <file> -o <out> -duc -silent -rl N -c 25 -timeout 5 -severity critical,high,medium [-tags tags]
 ```
 
-## 6. Hardware-aware runtime tuning
+## 8. Known limitations
 
-`core/config.py` now derives a runtime profile from:
-
-- CPU cores: `os.cpu_count()`
-- RAM size: `/proc/meminfo` (`MemTotal`)
-
-This profile controls:
-
-- `RATE_LIMIT`
-- `NUCLEI_RATE_LIMIT`
-- `NUCLEI_CONCURRENCY`
-- `WATCHDOG_WORKERS`
-
-## 7. Error observability
-
-- Persistent logs: `logs/hunt3r.log`
-- Runtime snapshots (JSON): `logs/snapshot_<label>_<timestamp>.json`
-- Snapshot captures:
-  - per-worker statuses
-  - active tool states
-  - recent activity entries
-
-## 8. Current known limitations
-
-- Platform API coverage in watchdog remains environment-dependent (`bbscope`/credentials)
-- Very small terminals may reduce readability
-- High-volume targets can require tuning nuclei timeout/rate limits
+- Platform API path depends on local `bbscope` and valid credentials
+- Very small terminals can degrade watchdog rendering
+- Very large target sets may require Nuclei timeout tuning
 
 ## 9. Validation baseline
 
-Current baseline from repository test suite:
-
 - `python3 -m pytest tests/ -q`
-- Result: **66 passed**, with pre-existing warning set in improvement tests
+- Current baseline: **71 passed, 11 subtests passed**

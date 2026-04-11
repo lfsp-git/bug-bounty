@@ -8,6 +8,7 @@ __pycache__/
 .venv/
 venv/
 recon/baselines
+recon/cache/
 .last_update_cache
 config/selected_model.json
 .claude/
