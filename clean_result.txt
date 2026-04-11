@@ -1,0 +1,79 @@
+leonardofsp@vmi2610724:~/bug-bounty$  source /home/leonardofsp/bug-bounty/.venv/bin/activate
+(.venv) leonardofsp@vmi2610724:~/bug-bounty$ python3 main.py --clean
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ HUNT3R v1.0-EXCALIBUR                                                                                                            │
+│ UX/UI PREDADOR - EDITION                                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+20:31:17 ● CLEAN        ╔══ HUNT3R CLEAN MODE ══════════════════════════╗
+20:31:17 ● CLEAN        ║ Limpeza de cache + update + health + testes   ║
+20:31:17 ● CLEAN        ╚══════════════════════════════════════════════╝
+
+20:31:17 ● CLEAN        ── Purging caches & temp files ──
+20:31:17 ● CLEAN        Removido: recon/cache/notifier_dedup.json
+20:31:17 ● CLEAN        Removido: .last_update_cache
+20:31:17 ● CLEAN        Limpo: recon/baselines/
+20:31:17 ● CLEAN        Cache limpo.
+
+20:31:17 ● UPDATE       ── Atualizando ferramentas ──
+  OK Subfinder (existente)
+  OK DNSX (existente)
+  OK HTTPX (existente)
+  OK Katana (existente)
+  OK Nuclei (existente)
+
+  OK Nuclei Templates (12839 templates)
+
+
+20:31:19 ● DEPS         ── Atualizando dependências Python ──
+20:31:26 ● DEPS         requirements.txt instalado/atualizado.
+
+20:31:26 ● TOOLS        ── Verificando ferramentas ──
+20:31:27 ● TOOLS        [32m✓[0m subfinder    [90mv2.13.0[0m
+20:31:27 ● TOOLS        [32m✓[0m dnsx         [90mv1.2.3[0m
+20:31:28 ● TOOLS        [32m✓[0m httpx        [90m[0m
+20:31:28 ● TOOLS        [32m✓[0m katana       [90mv1.5.0[0m
+20:31:28 ● TOOLS        [32m✓[0m nuclei       [90mv3.7.1[0m
+20:31:28 ● TOOLS        [32m✓[0m uncover      [90mv1.1.0[0m
+20:31:29 ● TOOLS        [32m✓[0m naabu        [90mv2.5.0[0m
+20:31:29 ● TOOLS        [33m–[0m ffuf         [90mnão instalado (opcional)[0m
+20:31:29 ● TOOLS        [33m–[0m gau          [90mnão instalado (opcional)[0m
+20:31:29 ● TOOLS        [33m–[0m anew         [90mnão instalado (opcional)[0m
+
+20:31:29 ● APIKEYS      ── Status das chaves de API ──
+20:31:29 ● APIKEYS      [32m✓[0m OpenAI / OpenRouter    [90msk-o***[0m
+20:31:29 ● APIKEYS      [32m✓[0m HackerOne Token        [90mRE9V***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Intigriti Token        [90m0399***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Shodan                 [90mTMd0***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Chaos (pdcp)           [90m585f***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Censys ID              [90mPu1K***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Censys Secret          [90mcens***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Telegram Token         [90m7952***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Telegram Chat ID       [90m-100***[0m
+20:31:29 ● APIKEYS      [32m✓[0m Discord Webhook        [90mhttp***[0m
+
+20:31:29 👁️ UNCOVER      ── Sincronizando providers do uncover ──
+20:31:29 👁️ UNCOVER      Providers ativos: shodan, censys
+
+20:31:29 ● ML           [32m✓[0m Modelo ML encontrado: models/fp_filter_v1.pkl (71 KB)
+
+20:31:29 ● TEST         ── Executando testes ──
+20:31:44 ● TEST         ........................................................................ [ 20%]
+20:31:44 ● TEST         ........................................................................ [ 40%]
+20:31:44 ● TEST         ............................................................. [ 57%]
+20:31:44 ● TEST         ........................................................................ [ 77%]
+20:31:44 ● TEST         ........................................................................ [ 98%]
+20:31:44 ● TEST         .......                                                                  [100%]
+20:31:44 ● TEST         356 passed, 11 subtests passed in 12.24s
+20:31:44 ● TEST         [?25h[2mHunt3r terminated[0m
+20:31:44 ● TEST         Todos os testes passaram. ✓
+
+20:31:44 ● SUMMARY      ── Health Report ──
+20:31:44 ● SUMMARY      Ferramentas obrigatórias       ✓ OK
+20:31:44 ● SUMMARY      Dependências Python            ✓ OK
+20:31:44 ● SUMMARY      Modelo ML                      ✓ presente
+20:31:44 ● SUMMARY      Testes                         ✓ PASS
+
+20:31:44 ● CLEAN        Hunt3r pronto para uma clean run! ✓
+Hunt3r terminated
+(.venv) leonardofsp@vmi2610724:~/bug-bounty$ 
