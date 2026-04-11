@@ -110,8 +110,8 @@ class JSHunter:
             # CamelCase single word = React component / route name
             if re.match(r'^[A-Z][a-zA-Z]+$', val) and len(val) < 40:
                 return True
-            # snake_case identifier = i18n/translation key (e.g. current_password_missing)
-            if re.match(r'^[a-z][a-z0-9_]*$', val) and len(val) < 60:
+            # snake_case WITH underscores = i18n/translation key (e.g. current_password_missing)
+            if '_' in val and re.match(r'^[a-z][a-z0-9_]*$', val) and len(val) < 60:
                 return True
             # camelCase identifier without digits = JS variable name
             if re.match(r'^[a-z][a-zA-Z]+$', val) and len(val) < 40:
@@ -124,8 +124,9 @@ class JSHunter:
         elif pattern_name == 'generic_url_param':
             if cls._CDN_URL_DOMAINS.search(val):
                 return True
-            if '?' not in val and not re.search(
-                r'(?:token|key|secret|auth|api_?key|password)=', val, re.I
+            # Only keep URLs with juicy query params or very sensitive paths
+            if '?' in val and not re.search(
+                r'(?:token|key|secret|auth|api_?key|password|access)=', val, re.I
             ):
                 return True
 

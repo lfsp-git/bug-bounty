@@ -26,6 +26,11 @@ SEVERITY_EMOJI = {
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
 
+def _sev(finding: Dict) -> str:
+    """Extract severity from a finding, checking both top-level and nested info.severity."""
+    return (finding.get("severity") or finding.get("info", {}).get("severity", "info")).lower()
+
+
 class BugBountyReporter:
     """Generate submission-ready Markdown reports from Nuclei/JS findings."""
 
@@ -78,7 +83,7 @@ class BugBountyReporter:
         js_secrets = self.load_js_secrets(js_secrets_path) if js_secrets_path else []
 
         # Sort by severity
-        findings.sort(key=lambda x: SEVERITY_ORDER.get(x.get("severity", "info").lower(), 99))
+        findings.sort(key=lambda x: SEVERITY_ORDER.get(_sev(x), 99))
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         report_path = os.path.join(REPORTS_DIR, f"{self.handle}_{timestamp}_report.md")
@@ -112,11 +117,11 @@ class BugBountyReporter:
         lines.append(f"**Tool:** Hunt3r v1.0-EXCALIBUR\n")
 
         # Summary table
-        crits = sum(1 for f in findings if f.get("severity", "").lower() == "critical")
-        highs = sum(1 for f in findings if f.get("severity", "").lower() == "high")
-        meds = sum(1 for f in findings if f.get("severity", "").lower() == "medium")
-        lows = sum(1 for f in findings if f.get("severity", "").lower() == "low")
-        infos = sum(1 for f in findings if f.get("severity", "info").lower() == "info")
+        crits = sum(1 for f in findings if _sev(f) == "critical")
+        highs = sum(1 for f in findings if _sev(f) == "high")
+        meds = sum(1 for f in findings if _sev(f) == "medium")
+        lows = sum(1 for f in findings if _sev(f) == "low")
+        infos = sum(1 for f in findings if _sev(f) == "info")
 
         lines.append("## 📊 Scan Summary\n")
         lines.append("| Metric | Count |")
@@ -132,14 +137,14 @@ class BugBountyReporter:
         lines.append("")
 
         # Critical + High findings (full detail for submission)
-        priority = [f for f in findings if f.get("severity", "").lower() in ("critical", "high")]
+        priority = [f for f in findings if _sev(f) in ("critical", "high")]
         if priority:
             lines.append("## 🚨 Priority Findings (Critical / High)\n")
             for i, finding in enumerate(priority, 1):
                 lines.extend(self._format_finding(i, finding, detailed=True))
 
         # Medium findings
-        medium = [f for f in findings if f.get("severity", "").lower() == "medium"]
+        medium = [f for f in findings if _sev(f) == "medium"]
         if medium:
             lines.append("## ⚠️ Medium Severity Findings\n")
             for i, finding in enumerate(medium, 1):
@@ -156,13 +161,13 @@ class BugBountyReporter:
             lines.append("")
 
         # Low / Info (brief table)
-        low_info = [f for f in findings if f.get("severity", "info").lower() in ("low", "info")]
+        low_info = [f for f in findings if _sev(f) in ("low", "info")]
         if low_info:
             lines.append("## ℹ️ Low / Informational\n")
             lines.append("| Severity | Template | Host | Matched |")
             lines.append("|----------|----------|------|---------|")
             for f in low_info[:30]:
-                sev = f.get("severity", "info").upper()
+                sev = _sev(f).upper()
                 tid = f.get("template-id", "?")
                 host = f.get("host", "?")[:50]
                 matched = f.get("matched-at", "?")[:60]
@@ -186,7 +191,7 @@ class BugBountyReporter:
         return "\n".join(lines)
 
     def _format_finding(self, idx: int, finding: Dict, detailed: bool) -> List[str]:
-        sev = finding.get("severity", "info").lower()
+        sev = _sev(finding)
         emoji = SEVERITY_EMOJI.get(sev, "⚪")
         tid = finding.get("template-id", "unknown")
         host = finding.get("host", "N/A")
@@ -242,7 +247,7 @@ class BugBountyReporter:
 
     def _submission_ready_block(self, finding: Dict) -> List[str]:
         """Build a concise submission-ready section for H1/BC style reports."""
-        severity = finding.get("severity", "info").upper()
+        severity = _sev(finding).upper()
         host = finding.get("host", "N/A")
         matched = finding.get("matched-at", "N/A")
         name = finding.get("info", {}).get("name", finding.get("template-id", "Finding"))
