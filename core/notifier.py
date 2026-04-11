@@ -11,7 +11,11 @@ import hashlib
 import requests
 from datetime import datetime, timezone
 from core.ui import ui_log, Colors
-from core.config import NOTIFY_DEDUP_CACHE_FILE, NOTIFY_DEDUP_TTL_SECONDS
+from core.config import (
+    NOTIFY_DEDUP_CACHE_FILE,
+    NOTIFY_DEDUP_TTL_SECONDS,
+    NOTIFY_CROSS_PROGRAM_DEDUP,
+)
 
 
 class NotifierConfig:
@@ -129,6 +133,13 @@ def _is_duplicate_and_record_keys(keys: list[str]) -> bool:
     return False
 
 
+def _dedup_keys(prefix: str, legacy_key: str, target: str | None = None, *parts) -> list[str]:
+    keys = [_hashed_dedup_key(prefix, target or "", *parts), legacy_key]
+    if NOTIFY_CROSS_PROGRAM_DEDUP:
+        keys.append(_hashed_dedup_key(f"{prefix}:global", *parts))
+    return keys
+
+
 def _is_duplicate_and_record(key: str) -> bool:
     return _is_duplicate_and_record_keys([key])
 
@@ -192,8 +203,7 @@ class NotificationDispatcher:
 
             if sev in ("CRITICAL", "HIGH"):
                 legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                dedup_key = _hashed_dedup_key("tg:nuclei", target, sev, tid, matched, cve)
-                if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
+                if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
                     continue
                 html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                 _tg_post(tg[0], tg[1], html)
@@ -208,14 +218,12 @@ class NotificationDispatcher:
                     f"Report:\n<pre>{_tg_escape(report)}</pre>\n"
                 )
                 legacy_key = f"tg:escalated:{target}:{escalated}:{tid}"
-                dedup_key = _hashed_dedup_key("tg:escalated", target, escalated, tid, sim_sev)
-                if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
+                if _is_duplicate_and_record_keys(_dedup_keys("tg:escalated", legacy_key, target, escalated, tid, sim_sev)):
                     continue
                 _tg_post(tg[0], tg[1], html)
             elif sev == "MEDIUM":
                 legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                dedup_key = _hashed_dedup_key("tg:nuclei", target, sev, tid, matched, cve)
-                if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
+                if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
                     continue
                 html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                 _tg_post(tg[0], tg[1], html)
@@ -283,8 +291,7 @@ class NotificationDispatcher:
                     # Telegram: Critical + High + Medium
                     if sev in ("CRITICAL", "HIGH", "MEDIUM") and tg:
                         legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                        dedup_key = _hashed_dedup_key("tg:nuclei", target, sev, tid, matched, cve)
-                        if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
+                        if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
                             continue
                         html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                         _tg_post(tg[0], tg[1], html)
@@ -333,15 +340,13 @@ class NotificationDispatcher:
                             f"Value: <code>{_tg_escape(val)}</code>\n"
                         )
                         legacy_key = f"tg:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
-                        dedup_key = _hashed_dedup_key("tg:js", target, severity, stype, source, val)
-                        if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
+                        if _is_duplicate_and_record_keys(_dedup_keys("tg:js", legacy_key, target, severity, stype, source, val)):
                             continue
                         _tg_post(tg[0], tg[1], html)
                         tg_count += 1
                     elif dc:
                         legacy_key = f"dc:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
-                        dedup_key = _hashed_dedup_key("dc:js", target, severity, stype, source, val)
-                        if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
+                        if _is_duplicate_and_record_keys(_dedup_keys("dc:js", legacy_key, target, severity, stype, source, val)):
                             continue
                         embed = {
                             "title": f"[JS Secret] {target}",

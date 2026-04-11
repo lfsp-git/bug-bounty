@@ -375,6 +375,24 @@ class TestNotifier(unittest.TestCase):
                 self.assertFalse(notifier_mod._is_duplicate_and_record_keys([k1]))
                 self.assertTrue(notifier_mod._is_duplicate_and_record_keys([k2]))
 
+    def test_notifier_cross_program_dedup_key_generation(self):
+        from core import notifier as notifier_mod
+
+        with patch.object(notifier_mod, "NOTIFY_CROSS_PROGRAM_DEDUP", True):
+            keys = notifier_mod._dedup_keys(
+                "tg:nuclei",
+                "legacy:key",
+                "program-a",
+                "high",
+                "template-x",
+                "https://example.com",
+                "N/A",
+            )
+        self.assertEqual(len(keys), 3)
+        self.assertEqual(keys[1], "legacy:key")
+        self.assertTrue(keys[0].startswith("tg:nuclei:"))
+        self.assertTrue(keys[2].startswith("tg:nuclei:global:"))
+
 
 # ---------------------------------------------------------------------------
 # core/reporter.py
