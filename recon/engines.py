@@ -87,13 +87,42 @@ def run_dnsx(input_file, output_file, rate_limit=100):
     # Note: no -resp flag — keeps output as plain hostnames so HTTPX can consume it directly
     run_cmd([find_tool("dnsx"), "-l", input_file, "-o", output_file, "-wd", "-silent", "-a", f"-rate-limit={rate_limit}"], "DNSX", output_file)
 
+# Known placeholder values that must never be treated as real Censys credentials
+_CENSYS_PLACEHOLDERS = frozenset({
+    "hunt3r", "censys", "your_censys_api_id", "placeholder", "changeme",
+    "your_api_id", "your_id", "api_id", "apiid", "test", "example",
+    "none", "null", "undefined", "dummy", "fake", "secret",
+})
+
+def _is_valid_censys_id(value: str) -> bool:
+    """Accept any Censys API token that is not an obvious placeholder.
+
+    Censys v2 supports multiple credential formats:
+      - UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      - Email: user@example.com
+      - Short API token: e.g. 'Pu1KHr6r' (≥ 6 printable non-whitespace chars)
+
+    All are accepted as long as the value is not in the known-placeholder list.
+    """
+    if not value or len(value) < 6:
+        return False
+    if value.lower() in _CENSYS_PLACEHOLDERS:
+        return False
+    # Must be printable chars without whitespace
+    import re as _re
+    return bool(_re.match(r'^[\S]+$', value))
+
 def _sync_uncover_providers() -> List[str]:
     """Sync .env API keys into uncover provider-config.yaml.
 
     Returns the list of enabled provider names so run_uncover can pass -e flags.
-    Censys is skipped when CENSYS_API_ID looks like a placeholder (not a UUID / email).
+    Censys is skipped when CENSYS_API_ID looks like an obvious placeholder.
+
+    Accepted formats for CENSYS_API_ID:
+      - Standard UUID (hex+dashes, 32-36 chars)
+      - Email address
+      - Short alphanumeric API token (≥ 6 printable chars, not a known placeholder)
     """
-    import re as _re
     cfg_path = os.path.expanduser("~/.config/uncover/provider-config.yaml")
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
@@ -102,9 +131,7 @@ def _sync_uncover_providers() -> List[str]:
     censys_id   = os.getenv("CENSYS_API_ID", "").strip()
     censys_sec  = os.getenv("CENSYS_API_SECRET", "").strip()
 
-    # Censys API_ID must be a UUID (hex-and-dashes) or email — reject obvious placeholders
-    _uuid_or_email = _re.compile(r'^[0-9a-f\-]{32,36}$|^[^@]+@[^@]+\.[a-z]{2,}$', _re.I)
-    censys_valid = bool(censys_id and censys_sec and _uuid_or_email.match(censys_id))
+    censys_valid = _is_valid_censys_id(censys_id) and bool(censys_sec)
 
     lines = []
     enabled = []
@@ -117,8 +144,8 @@ def _sync_uncover_providers() -> List[str]:
     else:
         if censys_id:
             logging.warning(
-                f"Censys CENSYS_API_ID='{censys_id}' does not look like a valid UUID/email. "
-                "Censys disabled — update .env with your real credentials."
+                f"Censys CENSYS_API_ID='{censys_id}' looks like a placeholder or is too short "
+                "(min 6 chars). Censys disabled — set your real API token in .env."
             )
 
     if lines:

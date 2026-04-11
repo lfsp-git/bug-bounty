@@ -140,7 +140,7 @@ class TestDryRunPipeline(unittest.TestCase):
         """ExportFormatter.export() returns '' for unknown format."""
         from core.output import ExportFormatter
         fmt = ExportFormatter()
-        result = fmt.export([{"template-id": "x"}], "pdf")
+        result = fmt.export([{"template-id": "x"}], "unknownformat")
         self.assertEqual(result, "")
 
     def test_storage_checkpoint_roundtrip(self):
