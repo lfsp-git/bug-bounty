@@ -5,6 +5,7 @@ Discord (Monitoramento): Medium, Low, Info, Recon logs
 """
 
 import os
+import re
 import json
 import logging
 import hashlib
@@ -21,6 +22,47 @@ from core.config import (
 def _get_sev(finding: dict, default: str = "info") -> str:
     """Extract severity, checking top-level then info.severity for nuclei v2/v3 compat."""
     return (finding.get("severity") or finding.get("info", {}).get("severity", default)).lower()
+
+
+_PROBE_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+_PROBE_INTERESTING_KEYS = re.compile(
+    r'"(?:data|users|user|email|token|key|secret|password|id|access|auth|admin|'
+    r'config|internal|debug|settings|api_key|api_token|refresh_token|session|'
+    r'results|items|records|accounts|credentials)["\s:]',
+    re.I,
+)
+_PROBE_SENSITIVE_PATHS = ("/admin", "/debug", "/internal", "/config", "/settings", "/graphql")
+
+
+def _probe_generic_url(url: str) -> str:
+    """
+    Probe a URL without authentication headers.
+    Returns 'escalate' if endpoint responds 200 with interesting/sensitive content.
+    Returns 'skip' for everything else (auth-required, errors, non-JSON noise).
+    """
+    try:
+        resp = requests.get(
+            url,
+            timeout=8,
+            allow_redirects=True,
+            headers={"User-Agent": _PROBE_UA},
+        )
+        if resp.status_code != 200:
+            return "skip"
+        body = resp.text[:4096]
+        content_type = resp.headers.get("Content-Type", "")
+        is_json = "json" in content_type or body.lstrip()[:1] in ("{", "[")
+        if not is_json:
+            return "skip"
+        if _PROBE_INTERESTING_KEYS.search(body):
+            return "escalate"
+        # Even without matching keys, sensitive paths returning 200+JSON are worth alerting
+        url_lower = url.lower()
+        if any(p in url_lower for p in _PROBE_SENSITIVE_PATHS):
+            return "escalate"
+        return "skip"
+    except Exception:
+        return "skip"
 
 
 class NotifierConfig:
@@ -335,6 +377,13 @@ class NotificationDispatcher:
                     source = d.get("source", d.get("url", ""))
                     val = d.get("value", "")[:80]
                     severity = d.get("severity", "low").upper()
+
+                    # Probe generic_url_params before notifying — skip if not accessible without auth
+                    if stype == "generic_url_param":
+                        probe = _probe_generic_url(val)
+                        if probe == "skip":
+                            continue
+                        severity = "HIGH"  # Endpoint responded 200+JSON without auth → escalate
 
                     if severity in ("CRITICAL", "HIGH", "MEDIUM") and tg:
                         emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡"}.get(severity, "🟣")
