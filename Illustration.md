@@ -3,14 +3,14 @@
 ║              "Um robô que caça bugs enquanto você dorme"              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
-  🌐 INTERNET (HackerOne + Intigriti)
+  🌐 INTERNET (HackerOne + Intigriti + alvos.txt)
           │
           │  "Ei, quais sites posso testar?"
           ▼
 ┌─────────────────────┐
-│  📋 BUSCA DE ALVOS  │  ← bbscope busca a lista de sites
-│  _fetch_global_     │    e salva no cache por 12h
-│  wildcards()        │    (como uma lista de compras!)
+│  📋 BUSCA DE ALVOS  │  ← bbscope (H1/IT) busca wildcards e
+│  _fetch_global_     │    tags cada alvo com a plataforma origem
+│  wildcards()        │    (h1 / it / custom). Cache 12h.
 └─────────┬───────────┘
           │
           │  "Limpa a lista, tira lixo"
@@ -23,11 +23,18 @@
           │
           │  "Qual site vale mais a pena?"
           ▼
-┌─────────────────────┐
-│  🧠 SCORING COM IA  │  ← dá nota 0-100 pra cada site
-│  _prioritize_by_    │    (quanto maior a nota,
-│  bounty_potential() │     mais dinheiro de recompensa!)
-└─────────┬───────────┘
+┌─────────────────────────────────────────────────────┐
+│  🧠 SCORING COM IA (0-100)                          │
+│  _prioritize_by_bounty_potential()                  │
+│                                                     │
+│  wildcard scope  35% — *.domínio = superfície total │
+│  breadth         25% — mais domínios = mais alvos   │
+│  target quality  25% — TLD / bounty / fintech       │
+│  platform signal 15% — H1 > IT > BC (histórico)     │
+│                                                     │
+│  Score gravado no target dict → AI validation       │
+│  dispara apenas para score ≥ 60                     │
+└─────────┬───────────────────────────────────────────┘
           │
           │  "Vamos atacar em paralelo!"
           ▼
@@ -47,13 +54,17 @@
 │  │     ↓                                      │        │
 │  │  dnsx → "quais estão vivos?"               │        │
 │  │     ↓                                      │        │
+│  │  uncover → "hosts via Shodan/Censys"       │        │
+│  │     ↓                                      │        │
 │  │  httpx → "abre as portas HTTP"             │        │
 │  │     ↓                                      │        │
 │  │  katana → "explora cada página"            │        │
 │  │     ↓                                      │        │
-│  │  js-hunter → "acha senhas em JS"           │        │
+│  │  js-hunter → "acha senhas em JS 🗝️"        │        │
+│  │     (severity: CRITICAL/HIGH/MEDIUM/LOW)   │        │
 │  │     ↓                                      │        │
 │  │  nuclei → "dispara flechas de vuln! 🎯"    │        │
+│  │     (apenas Medium/High/Critical)          │        │
 │  └────────────────────────────────────────────┘        │
 └──────────────────────┬─────────────────────────────────┘
                        │
@@ -62,21 +73,22 @@
     😴 NADA NOVO            🚨 ACHOU ALGO!
           │                         │
           ▼                         ▼
-  ┌───────────────┐        ┌─────────────────────┐
-  │  Salva no     │        │  📣 ALERTA!          │
-  │  histórico    │        │  Telegram 📱         │
-  │  e continua   │        │  Discord  💬         │
-  └───────────────┘        └─────────────────────┘
-
+  ┌───────────────┐        ┌─────────────────────────────┐
+  │  Salva no     │        │  📣 ALERTAS                  │
+  │  histórico    │        │  Telegram 📱 — vulns M/H/C   │
+  │  e continua   │        │  Discord  💬 — stats do scan │
+  └───────────────┘        │  (plataforma, subs, hosts,   │
+                           │   endpoints, segredos)        │
+                           └─────────────────────────────┘
           │
           ▼
 ┌─────────────────────────────────────────────┐
 │              😴 DORME UM POUCO...            │
 │                                             │
-│  Achou muito → dorme 4h  (fica ligado!)     │
-│  Achou nada  → dorme 6-7h (economiza)       │
-│  Muitos erros → dorme 7-8h (descansa)       │
-│  Sem alvos   → dorme 15min (tenta logo)     │
+│  Achou muito  → dorme 1h  (fica ligado!)    │
+│  Achou nada   → dorme 2-3h (economiza)      │
+│  Muitos erros → dorme 3-4h (descansa)       │
+│  Sem alvos    → dorme 15min (tenta logo)    │
 └─────────────────┬───────────────────────────┘
                   │
                   │  "Acorda e começa tudo de novo!"
@@ -84,3 +96,19 @@
                                      ▼
                               🔄 VOLTA AO INÍCIO
                               (pra sempre, até Ctrl+C)
+
+## Relatórios
+
+Cada missão gera um `.md` em `reports/` com:
+- Plataforma de origem (HackerOne / Intigriti / Custom (alvos.txt))
+- Estatísticas: subdomínios, hosts vivos, endpoints, segredos JS, vulns
+- Tabela de vulnerabilidades (apenas Medium/High/Critical)
+- Checklist de submissão
+
+## Modo --clean
+
+```
+Purge cache → Update tools → Update deps Python →
+Health check ferramentas → Status API keys →
+Sync uncover providers → Verificar modelo ML → Rodar testes
+```

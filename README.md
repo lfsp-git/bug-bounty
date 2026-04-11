@@ -10,29 +10,31 @@ Pipeline autônomo de bug bounty com execução terminal-first, watchdog 24/7, f
 | `core/runner.py` | Orquestração unificada (`MissionRunner`, `ProOrchestrator`) |
 | `core/scanner.py` | Pipeline de fases (recon → tática → validação) |
 | `core/intel.py` | IA + scoring unificado (`AIClient`, `IntelMiner`, `BountyScorer`) |
+| `core/bounty_scorer.py` | Score 0-100 por programa (wildcard/breadth/quality/platform) |
 | `core/state.py` | Baseline e checkpoints |
 | `core/output.py` | Notificação, relatório e exportação |
-| `core/watchdog.py` | Loop adaptativo 24/7 com métricas de ciclo |
+| `core/watchdog.py` | Loop adaptativo 1-2h com métricas de ciclo |
 | `core/filter.py` | FalsePositiveKiller (7 filtros + ML) |
+| `core/cleaner.py` | Workflow `--clean`: purge, update, health check, testes |
 | `core/ui.py` | UI tática fullscreen (Rich Live) |
 | `core/config.py` | Configuração centralizada, timeouts, rate limits |
 | `recon/tools.py` | Descoberta de binários e wrappers de ferramentas |
-| `recon/engines.py` | Execução de subfinder, dnsx, httpx, katana, nuclei |
-| `recon/js_hunter.py` | Extração de segredos em JavaScript |
-| `recon/platforms.py` | APIs H1/BC/IT via bbscope |
+| `recon/engines.py` | Execução de subfinder, dnsx, httpx, katana, nuclei, uncover |
+| `recon/js_hunter.py` | Extração de segredos em JavaScript (c/ severidade por tipo) |
+| `recon/platforms.py` | APIs H1/BC/IT via bbscope + alvos.txt customizados |
 
 ## Pipeline
 
 ```
-WATCHDOG → DIFF → Subfinder → DNSX → Uncover → HTTPX → Katana → JS Hunter → Nuclei → FP Filter (7+ML) → IA → Notificar → Relatório
+WATCHDOG → DIFF → Subfinder → DNSX → Uncover → HTTPX → Katana → JS Hunter → Nuclei → FP Filter (7+ML) → IA (score≥60) → Notificar → Relatório
 ```
 
 ## Início rápido
 
 ```bash
-pip install -r requirements.txt
 cp .env.example .env   # configurar tokens
-python3 main.py
+python3 main.py --clean   # instalar deps + verificar ferramentas + rodar testes
+python3 main.py           # Menu interativo
 ```
 
 ### Modos disponíveis
@@ -40,9 +42,33 @@ python3 main.py
 ```bash
 python3 main.py              # Menu interativo
 python3 main.py --watchdog   # Modo autônomo 24/7
+python3 main.py --clean      # Purge + update + health check + testes
 python3 main.py --dry-run    # Preview sem executar ferramentas
 python3 main.py --resume ID  # Retomar missão
-python3 main.py --export csv # Exportar findings (csv/xlsx/xml)
+python3 main.py --export csv # Exportar findings (csv/xlsx/xml/pdf)
+```
+
+### Variáveis de ambiente (`.env`)
+
+```bash
+# IA
+OPENROUTER_API_KEY=...
+
+# Notificações
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
+
+# Plataformas bug bounty
+H1_USER=...
+H1_TOKEN=...
+IT_TOKEN=...
+
+# APIs de reconhecimento
+SHODAN_API_KEY=...
+CENSYS_API_ID=...      # token curto tipo "Pu1KHr6r"
+CENSYS_API_SECRET=...
+CHAOS_KEY=...
 ```
 
 ## Validação
@@ -51,4 +77,4 @@ python3 main.py --export csv # Exportar findings (csv/xlsx/xml)
 python3 -m pytest tests/ -q
 ```
 
-Baseline atual: **73 testes aprovados, 11 subtestes**.
+Baseline atual: **364 testes aprovados, 11 subtestes, 0 falhas**.

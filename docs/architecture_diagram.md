@@ -11,6 +11,7 @@ graph TD
     CLI --> WD[core/watchdog.py]
     CLI --> UI[core/ui.py]
     CLI --> CFG[core/config.py]
+    CLI --> CLN[core/cleaner.py]
 
     RUN --> SCN[core/scanner.py]
     WD --> RUN
@@ -41,42 +42,54 @@ graph LR
     UN --> HX[HTTPX]
     HX --> KT[Katana]
     KT --> JS[JS Hunter]
-    JS --> NU[Nuclei]
+    JS --> NU[Nuclei M/H/C]
     NU --> FP[FP Filter 7+ML]
-    FP --> AI[Validação IA]
-    AI --> NT[Notificação]
-    NT --> RP[Relatório]
+    FP --> AI[Validação IA score≥60]
+    AI --> NT[Telegram/Discord]
+    NT --> RP[Relatório .md]
 ```
 
 ## 3) Mapa de arquivos
 
-| Arquivo | Linhas | Responsabilidade |
-|---------|--------|------------------|
-| `main.py` | ~293 | CLI, roteamento de modos |
-| `core/scanner.py` | ~771 | MissionRunner + ProOrchestrator |
-| `core/ui.py` | ~805 | UI tática fullscreen (Rich Live) |
-| `core/watchdog.py` | ~354 | Loop 24/7 adaptativo |
-| `core/config.py` | ~229 | Configuração centralizada |
-| `core/filter.py` | ~112 | FalsePositiveKiller (7 camadas) |
-| `core/ml_filter.py` | ~225 | Filtro ML (LightGBM) |
-| `core/notifier.py` | ~358 | Telegram/Discord + dedup temporal |
-| `core/ai.py` | ~251 | AIClient + IntelMiner (OpenRouter) |
-| `core/bounty_scorer.py` | ~269 | Scoring de programas |
-| `core/reporter.py` | ~240 | Relatórios Markdown |
-| `core/export.py` | ~185 | CSV/XLSX/XML + dry-run |
-| `core/storage.py` | ~184 | ReconDiff + CheckpointManager |
-| `core/updater.py` | ~219 | PDTM + nuclei-templates |
-| `recon/engines.py` | ~266 | Wrappers de ferramentas |
-| `recon/js_hunter.py` | ~160 | Extração de segredos JS |
-| `recon/platforms.py` | ~243 | APIs H1/BC/IT |
-| `recon/tech_detector.py` | ~307 | Detecção de tecnologias |
+| Arquivo | Responsabilidade |
+|---------|------------------|
+| `main.py` | CLI, roteamento de modos |
+| `core/scanner.py` | MissionRunner + ProOrchestrator |
+| `core/ui.py` | UI tática fullscreen (Rich Live) |
+| `core/watchdog.py` | Loop 1-2h adaptativo + platform tagging |
+| `core/config.py` | Configuração centralizada |
+| `core/filter.py` | FalsePositiveKiller (7 camadas) |
+| `core/ml_filter.py` | Filtro ML (LightGBM) |
+| `core/notifier.py` | Telegram vulns M/H/C; Discord stats/heartbeat |
+| `core/ai.py` | AIClient + IntelMiner (OpenRouter) |
+| `core/bounty_scorer.py` | Scoring 4 sinais (wildcard/breadth/quality/platform) |
+| `core/reporter.py` | Relatórios Markdown com plataforma correta |
+| `core/export.py` | CSV/XLSX/XML/PDF com nome do alvo |
+| `core/cleaner.py` | --clean: purge/update/health/sync/testes |
+| `core/storage.py` | ReconDiff + CheckpointManager |
+| `core/updater.py` | PDTM + nuclei-templates |
+| `recon/engines.py` | Wrappers de ferramentas + Censys validation + Uncover sync |
+| `recon/js_hunter.py` | Extração de segredos JS com campo severity |
+| `recon/platforms.py` | H1 API (platform='h1') + alvos.txt (platform='custom') |
+| `recon/tech_detector.py` | Detecção de tecnologias para tags Nuclei |
 
 ## 4) Facades unificadas
 
 | Facade | Consolida | Exporta |
 |--------|-----------|---------|
 | `core/runner.py` | scanner.py | `MissionRunner`, `ProOrchestrator` |
-| `core/intel.py` | ai.py + bounty_scorer.py | `AIClient`, `IntelMiner`, `score_program` |
+| `core/intel.py` | ai.py + bounty_scorer.py | `AIClient`, `IntelMiner`, `score_program`, `score_watchdog_target` |
 | `core/state.py` | storage.py | `ReconDiff`, `CheckpointManager`, `resume_mission` |
 | `core/output.py` | notifier + reporter + export | `NotificationDispatcher`, `BugBountyReporter`, `ExportFormatter` |
 | `recon/tools.py` | engines.py + tool_discovery.py | `find_tool`, `run_subfinder`, `run_nuclei`, etc. |
+
+## 5) Routing de notificações
+
+| Finding | Destino |
+|---------|---------|
+| Nuclei Medium/High/Critical | Telegram |
+| JS Secret CRITICAL/HIGH/MEDIUM | Telegram |
+| JS Secret LOW | Descartado |
+| Nuclei Low/Info | Descartado |
+| Scan statistics (sub/host/ep/sec/vuln) | Discord embed |
+| Watchdog heartbeat / rain-check | Discord |
