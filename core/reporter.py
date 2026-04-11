@@ -58,9 +58,9 @@ class BugBountyReporter:
             logger.error(f"Cannot read findings file {findings_path}: {e}")
         return findings
 
-    def load_js_secrets(self, js_secrets_path: str) -> List[str]:
-        """Load and deduplicate JS secrets by (type, value, source) fingerprint."""
-        secrets: List[str] = []
+    def load_js_secrets(self, js_secrets_path: str) -> List[dict]:
+        """Load, deduplicate and parse JS secrets. Returns list of dicts."""
+        secrets: List[dict] = []
         if not js_secrets_path or not os.path.exists(js_secrets_path):
             return secrets
         try:
@@ -70,17 +70,16 @@ class BugBountyReporter:
                     raw = line.strip()
                     if not raw:
                         continue
-                    # Deduplicate by fingerprint: try JSON parse for type+value+source,
-                    # fall back to raw string hash for plain-text entries.
                     try:
                         import json as _json
                         obj = _json.loads(raw)
                         fp = (obj.get("type", ""), obj.get("value", ""), obj.get("source", ""))
                     except Exception:
+                        obj = {"type": "unknown", "value": raw, "source": "", "severity": "unknown"}
                         fp = raw
                     if fp not in seen:
                         seen.add(fp)
-                        secrets.append(raw)
+                        secrets.append(obj)
         except OSError as e:
             logger.error(f"Cannot read JS secrets file: {e}")
         return secrets
@@ -125,7 +124,7 @@ class BugBountyReporter:
     def _build_report(
         self,
         findings: List[Dict],
-        js_secrets: List[str],
+        js_secrets: List[dict],
         subdomains_count: int,
         endpoints_count: int,
     ) -> str:
@@ -176,10 +175,21 @@ class BugBountyReporter:
 
         # JS Secrets
         if js_secrets:
+            _SEV_ICON = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "unknown": "⚪"}
             lines.append("## 🟣 JS Secrets Discovered\n")
             lines.append("> ⚠️ These may contain API keys, tokens, or credentials. Verify before reporting.\n")
-            for secret in js_secrets[:50]:
-                lines.append(f"- `{secret}`")
+            # Sort: critical/high first
+            _sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
+            sorted_secrets = sorted(js_secrets[:50], key=lambda s: _sev_order.get(str(s.get("severity", "unknown")).lower(), 4))
+            for s in sorted_secrets:
+                stype = s.get("type", "unknown").replace("_", " ").title()
+                sval = s.get("value", "").strip()
+                src = s.get("url") or s.get("source", "")
+                sev = str(s.get("severity", "unknown")).lower()
+                icon = _SEV_ICON.get(sev, "⚪")
+                lines.append(f"- {icon} **{stype}**: `{sval}`")
+                if src:
+                    lines.append(f"  - Source: {src}")
             if len(js_secrets) > 50:
                 lines.append(f"\n*...and {len(js_secrets) - 50} more. See full findings file.*")
             lines.append("")

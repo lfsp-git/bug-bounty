@@ -127,6 +127,19 @@ class JSHunter:
                 return True
             if val.startswith('/') or val.startswith('http'):
                 return True
+            # HTML entities = UI/template string (e.g. "Enter the username &amp; password")
+            if '&amp;' in val or '&lt;' in val or '&gt;' in val or '&#' in val:
+                return True
+            # Non-ASCII letters = i18n/localization string (e.g. "contraseña", "wachtwoord")
+            if re.search(r'[^\x00-\x7F]', val):
+                return True
+            # Multi-word natural language: 3+ space-separated lowercase/title words → UI label
+            words = val.split()
+            if len(words) >= 3 and all(re.match(r"^[A-Za-z'&;]+$", w) for w in words):
+                return True
+            # Two-word phrase where second word matches common UI words → "Hide password", "Show password"
+            if len(words) == 2 and re.match(r'^(?:hide|show|enter|confirm|reset|change|forgot|new|old|current|repeat|verify)$', words[0], re.I):
+                return True
             # CamelCase single word = React component / route name
             if re.match(r'^[A-Z][a-zA-Z]+$', val) and len(val) < 40:
                 return True
