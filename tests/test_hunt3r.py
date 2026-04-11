@@ -590,3 +590,21 @@ class TestWatchdogUI(unittest.TestCase):
                 self.assertIn("HUNT3R WATCHDOG ACTIVITY START", content)
                 self.assertIn("[W1] Nuclei", content)
             ui_mod._WATCHDOG_MODE = prev_watchdog
+
+    def test_sigint_handler_raises_keyboardinterrupt(self):
+        from core import ui as ui_mod
+        with self.assertRaises(KeyboardInterrupt):
+            ui_mod._sigint_handler(None, None)
+
+    def test_watchdog_ui_update_status_skips_spinner_frames(self):
+        from core import ui as ui_mod
+        prev_watchdog = ui_mod._WATCHDOG_MODE
+        ui_mod._WATCHDOG_MODE = True
+        try:
+            with patch.object(ui_mod, "ui_log") as mock_log:
+                ui_mod.ui_update_status("Nuclei", "- 0s | ETA: 12s")
+                mock_log.assert_not_called()
+                ui_mod.ui_update_status("Nuclei", "Done in 1s")
+                mock_log.assert_called_once()
+        finally:
+            ui_mod._WATCHDOG_MODE = prev_watchdog

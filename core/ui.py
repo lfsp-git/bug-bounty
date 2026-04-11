@@ -65,6 +65,8 @@ logging.basicConfig(
 )
 ACTIVITY_LOG_FILE = "activity.log"
 _activity_file_lock = threading.Lock()
+_cleanup_lock = threading.Lock()
+_cleanup_done = False
 
 ANSI_ESCAPE_RE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
@@ -279,6 +281,14 @@ def _activity_push(worker_id: str, module: str, message: str, color: str = "whit
             logging.error(f"Failed to write activity log file: {e}")
     logging.info(f"[{worker_id}] {module} - {message}")
 
+
+def _is_transient_status_message(message: str) -> bool:
+    msg = sanitize_input(message)
+    if not msg:
+        return False
+    # Spinner frames (e.g. "- 1s | ETA: 10s", "\\ 0s", "| 2s")
+    return msg[0] in "-\\|/" and "s" in msg[:8]
+
 # ─────────────────────────────────────────────────────────────
 # Snapshot (auto-called on error)
 # ─────────────────────────────────────────────────────────────
@@ -334,6 +344,8 @@ def _buffer_append(module: str, message: str):
     ui_log(module, message)
 
 def ui_update_status(step: str, detail: str, color=None):
+    if _WATCHDOG_MODE and _is_transient_status_message(detail):
+        return
     ui_log(step, detail, color)
 
 def ui_set_mission_meta(target: str, current: int = 0, total: int = 0):
@@ -701,19 +713,29 @@ def _stop_live_view():
 # ─────────────────────────────────────────────────────────────
 
 def _terminal_cleanup():
+    global _cleanup_done
+    with _cleanup_lock:
+        if _cleanup_done:
+            return
+        _cleanup_done = True
     _render_stop.set()
     if _render_thread and _render_thread.is_alive():
         _render_thread.join(timeout=2.0)
     _stop_live_view()
-    sys.stdout.write("\033[?25h")  # restore cursor
-    sys.stdout.flush()
+    try:
+        sys.stdout.write("\033[?25h")  # restore cursor
+        sys.stdout.flush()
+    except OSError:
+        pass
     _console.print("[dim]Hunt3r terminated[/dim]")
 
 atexit.register(_terminal_cleanup)
 
 def _sigint_handler(signum, frame):
-    _terminal_cleanup()
-    sys.exit(130)
+    _render_stop.set()
+    if sys.is_finalizing():
+        return
+    raise KeyboardInterrupt
 
 def _sigwinch_handler(signum, frame):
     pass  # Rich Live handles resize internally
