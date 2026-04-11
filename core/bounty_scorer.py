@@ -90,7 +90,9 @@ class BountyScorer:
         # Programs < 1 month old: 80 points
         # Programs < 3 months old: 60 points
         # Programs > 3 months old: 40 points (decay)
-        created_at = program.get('created_at', current_timestamp)
+        created_at = program.get('created_at')
+        if not isinstance(created_at, (int, float)):
+            created_at = current_timestamp
         days_old = (current_timestamp - created_at) / 86400
         
         if days_old < 7:
@@ -110,8 +112,8 @@ class BountyScorer:
         
         # 2. BUDGET SCORE (0-100)
         # Based on bounty range (min bounty used as proxy)
-        bounty_range = program.get('bounty_range', (0, 1000))
-        min_bounty = bounty_range[0] if isinstance(bounty_range, tuple) else bounty_range
+        bounty_range = program.get('bounty_range') or (0, 1000)
+        min_bounty = bounty_range[0] if isinstance(bounty_range, (tuple, list)) and len(bounty_range) > 0 else 0
         
         if min_bounty >= 5000:
             budget_score = 100
@@ -134,7 +136,7 @@ class BountyScorer:
         
         # 3. SCOPE SCORE (0-100)
         # Larger scope = more attack surface
-        scope_size = program.get('scope_size', 100)  # Default: assume 100 subs
+        scope_size = program.get('scope_size') or 100
         
         if scope_size >= 1000:
             scope_score = 90
