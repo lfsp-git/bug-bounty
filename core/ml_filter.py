@@ -78,7 +78,10 @@ class MLFilter:
             
             # Predict probability of being FP
             import numpy as np
-            X = np.array([features])
+            import pandas as pd
+            feature_names = getattr(cls._model, "feature_name_", None)
+            X_raw = np.array([features])
+            X = pd.DataFrame(X_raw, columns=feature_names) if feature_names else X_raw
             
             # Get probability of FP class (class 1)
             proba = cls._model.predict_proba(X)[0]
