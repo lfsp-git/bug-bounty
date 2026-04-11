@@ -606,6 +606,9 @@ class MissionRunner:
         validated_findings: List[Dict[str, Any]] = []
         critical_keywords = ['critical', 'high', 'rce', 'sql', 'xss', 'xxe', 'misconfig', 'takeover']
         
+        feedback_path = os.path.join(os.path.dirname(os.path.dirname(findings_file)), "data", "findings_feedback.jsonl")
+        os.makedirs(os.path.dirname(feedback_path), exist_ok=True)
+
         try:
             for vuln in _safe_read_jsonl(findings_file):
                 template_id = vuln.get('template-id', '').lower()
@@ -615,14 +618,42 @@ class MissionRunner:
                 is_critical = any(keyword in template_id for keyword in critical_keywords)
                 
                 if is_critical:
-                    prompt = f"""Analyze: Is this a real vulnerability?
-                        
-Target: {host}
-Template: {template_id}
-Respond only: VALID or INVALID"""
+                    severity = vuln.get('severity') or vuln.get('info', {}).get('severity', 'unknown')
+                    matched_at = vuln.get('matched-at', host)
+                    description = vuln.get('info', {}).get('description', '')[:200]
+                    extracted = vuln.get('extracted-results', [])
+                    extracted_str = ', '.join(str(x) for x in extracted[:3]) if extracted else 'none'
+
+                    prompt = (
+                        f"You are a bug bounty triage expert. Analyze this Nuclei finding:\n\n"
+                        f"Template: {template_id}\n"
+                        f"Severity: {severity}\n"
+                        f"Host: {host}\n"
+                        f"Matched at: {matched_at}\n"
+                        f"Description: {description}\n"
+                        f"Extracted: {extracted_str}\n\n"
+                        f"Is this a real, exploitable vulnerability or a false positive?\n"
+                        f"Respond with exactly one word: VALID or INVALID"
+                    )
                     response = ai_client.complete(prompt, max_tokens=10)
-                    
-                    if 'VALID' in response.upper():
+                    is_valid = 'VALID' in response.upper()
+
+                    # ML feedback: save label for retraining
+                    feedback_entry = {
+                        'template_id': template_id,
+                        'host': host,
+                        'severity': severity,
+                        'matched_at': matched_at,
+                        'label': 'tp' if is_valid else 'fp',
+                        'source': 'ai_validation',
+                    }
+                    try:
+                        with open(feedback_path, 'a', encoding='utf-8') as fb:
+                            fb.write(json.dumps(feedback_entry) + '\n')
+                    except OSError:
+                        pass
+
+                    if is_valid:
                         validated_findings.append(vuln)
                     else:
                         ui_log("AI VALIDATION", f"Rejected: {host} ({template_id})", Colors.WARNING)

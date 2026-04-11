@@ -202,6 +202,18 @@ def run_nuclei(
             ui_log("ENGINE_WARN", f"Timeout executing Nuclei after {timeout}s.", Colors.WARNING)
 
         reader.join(timeout=2)
+
+        # Crash detection: returncode != 0 means Nuclei exited abnormally.
+        # returncode 1 with empty output = tags matched 0 templates (silent failure).
+        rc = proc.returncode if proc else None
+        if rc not in (None, 0):
+            output_empty = not os.path.exists(output_file) or os.path.getsize(output_file) == 0
+            if output_empty:
+                msg = f"Nuclei exited with code {rc} and produced no output (tags may have matched 0 templates)"
+                ui_log("ENGINE_WARN", msg, Colors.WARNING)
+                raise RuntimeError(msg)
+            else:
+                ui_log("ENGINE_WARN", f"Nuclei exited with code {rc} but output exists — partial results.", Colors.WARNING)
     except KeyboardInterrupt:
         if proc and proc.poll() is None:
             proc.terminate()
@@ -212,6 +224,7 @@ def run_nuclei(
         raise
     except Exception as e:
         ui_log("ENGINE_ERR", f"Nuclei failed: {str(e)[:50]}", Colors.ERROR)
+        raise
 
 SECRET_SEVERITY = {
     'aws_access_key': 'critical', 'aws_secret_key': 'critical', 'private_key': 'critical',

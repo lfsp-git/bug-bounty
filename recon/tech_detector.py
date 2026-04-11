@@ -231,6 +231,36 @@ class TechDetector:
         3. CMS-specific (WordPress, Drupal)
         4. Generic (SQLi, XSS, info-disclosure)
         """
+        # Known-valid Nuclei community template tags. Tags outside this set are
+        # silently ignored by Nuclei, causing 0-template scans with no warning.
+        VALID_NUCLEI_TAGS = {
+            # Severity/category
+            'cve', 'misconfig', 'takeover', 'exposure', 'xss', 'sqli', 'rce', 'lfi', 'rfi',
+            'ssrf', 'xxe', 'idor', 'redirect', 'oast', 'file-upload', 'default-credentials',
+            'auth-bypass', 'cors', 'ssti', 'log4j', 'panel', 'login', 'api', 'fuzz',
+            'info-disclosure', 'token-leak', 'jwt', 'oauth', 'actuator', 'webdav',
+            'path-traversal', 'open-redirect', 'nosql', 'injection', 'hardcoded',
+            'secret-exposure', 'wp-plugin', 'wp-theme',
+            # Tech tags
+            'wordpress', 'apache', 'nginx', 'php', 'java', 'spring', 'tomcat', 'drupal',
+            'joomla', 'laravel', 'django', 'rails', 'graphql', 'iis', 'asp', 'aspx',
+            'mysql', 'mssql', 'postgres', 'mongodb', 'nodejs', 'javascript',
+        }
+
+        # Map invalid/legacy tags used internally → valid Nuclei equivalents
+        TAG_ALIASES = {
+            'hardcoded-secrets': 'hardcoded',
+            'secret-leak': 'secret-exposure',
+            'token-crack': 'token-leak',
+            'nosqli': 'nosql',
+            'introspection': 'graphql',
+            'wpscan': 'wordpress',
+            'module': 'misconfig',
+            'component': 'misconfig',
+            'xp_cmdshell': 'sqli',
+            'auth_bypass': 'auth-bypass',
+        }
+
         all_tech = {**cls.WEB_SERVERS, **cls.FRAMEWORKS, **cls.DATABASES, **cls.APIS, **cls.AUTH_MECHANISMS}
         
         tags_by_priority = {}
@@ -246,7 +276,6 @@ class TechDetector:
                 tags_by_priority[priority].extend(tags)
         
         # Build ordered tag list: Tier 1 → Tier 2 → Tier 3
-        # Also add generic tags for everything
         final_tags = []
         for priority in sorted(tags_by_priority.keys()):
             final_tags.extend(tags_by_priority[priority])
@@ -259,6 +288,14 @@ class TechDetector:
         
         # Remove duplicates, preserve order
         final_tags = list(dict.fromkeys(final_tags))
+
+        # Resolve aliases and filter to known-valid tags only
+        validated = []
+        for tag in final_tags:
+            resolved = TAG_ALIASES.get(tag, tag)
+            if resolved in VALID_NUCLEI_TAGS:
+                validated.append(resolved)
+        final_tags = list(dict.fromkeys(validated)) or ['cve', 'misconfig', 'takeover']
         
         # Limit to reasonable number (Nuclei can handle 20-30 tags)
         final_tags = final_tags[:25]
