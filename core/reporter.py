@@ -139,7 +139,8 @@ class BugBountyReporter:
         _platform_label = {
             "h1": "HackerOne", "bc": "Bugcrowd", "it": "Intigriti",
             "ywh": "YesWeHack", "hf": "HackFarm",
-        }.get(str(self.platform).lower(), self.platform.upper() if self.platform != "unknown" else "Custom/Manual")
+            "custom": "Custom (alvos.txt)",
+        }.get(str(self.platform).lower(), self.platform.upper() if self.platform not in ("unknown", "") else "Unknown")
         lines.append(f"**Platform:** {_platform_label}  ")
         lines.append(f"**Tool:** Hunt3r v1.0-EXCALIBUR\n")
 

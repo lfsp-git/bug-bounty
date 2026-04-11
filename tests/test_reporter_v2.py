@@ -182,9 +182,13 @@ class TestReporterPlatformField:
         report = self._read_report("ywh")
         assert "YesWeHack" in report
 
-    def test_unknown_platform_shows_custom(self):
+    def test_unknown_platform_shows_unknown(self):
         report = self._read_report("unknown")
-        assert "Custom" in report or "custom" in report.lower()
+        assert "Unknown" in report or "unknown" in report.lower()
+
+    def test_custom_platform_shows_alvos_txt(self):
+        report = self._read_report("custom")
+        assert "Custom (alvos.txt)" in report
 
     def test_platform_set_via_generate_parameter(self):
         reporter = BugBountyReporter("target")

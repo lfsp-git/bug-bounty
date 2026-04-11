@@ -97,7 +97,8 @@ def _fetch_global_wildcards():
     it_t = os.getenv("IT_TOKEN", "")
     # Note: subprocess list args are passed directly — no shell quoting needed
 
-    all_raw = to_set([])
+    # platform_map: raw_target → platform name (preserves source per target)
+    platform_map: dict = {}
     threads = []
     lock = threading.Lock()
 
@@ -107,7 +108,9 @@ def _fetch_global_wildcards():
             if res.returncode == 0:
                 targets = [l.strip() for l in res.stdout.split('\n') if "*" in l]
                 with lock:
-                    all_raw.update(to_set(targets))
+                    for t in targets:
+                        if t not in platform_map:
+                            platform_map[t] = name
                 ui_log("WATCHDOG", f"{name.upper()} pronto ({len(targets)} alvos).", Colors.SUCCESS)
             else:
                 ui_log("WATCHDOG", f"Falha no {name.upper()}.", Colors.WARNING)
@@ -134,12 +137,12 @@ def _fetch_global_wildcards():
     for th in threads:
         th.join()
 
-    if all_raw:
+    if platform_map:
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
         with open(CACHE_FILE, 'w') as f:
-            f.write('\n'.join(list(all_raw)))
+            f.write('\n'.join(platform_map.keys()))
 
-    return _process_raw_to_targets(list(all_raw))
+    return _process_raw_to_targets(list(platform_map.keys()), platform_map)
 
 
 def _load_targets_from_history():
@@ -192,7 +195,12 @@ def _normalize_target_domain(raw: str) -> list:
     return result
 
 
-def _process_raw_to_targets(raw_list):
+def _process_raw_to_targets(raw_list, platform_map: dict = None):
+    """Convert raw target strings into target dicts.
+
+    platform_map: optional mapping of raw_target → platform name (e.g. 'h1', 'it').
+    When absent, platform defaults to 'unknown'.
+    """
     history = to_set([])
     if os.path.exists(GLOBAL_TARGETS_HISTORY):
         with open(GLOBAL_TARGETS_HISTORY, 'r') as f:
@@ -212,10 +220,12 @@ def _process_raw_to_targets(raw_list):
         if clean not in history:
             new_found.append(clean)
             history.add(clean)
+        platform = (platform_map or {}).get(raw.strip(), 'unknown')
         valid_targets.append({
             'handle': clean.replace('.', '_').replace('-', '_'),
             'original_handle': raw.strip(),
             'domains': domains,
+            'platform': platform,
             'score': 50
         })
 

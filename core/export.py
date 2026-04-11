@@ -23,11 +23,13 @@ EXPORT_DIR = "reports"
 class ExportFormatter:
     """Export a list of finding dicts to CSV, XLSX, or XML."""
 
-    def __init__(self) -> None:
+    def __init__(self, target: str = "") -> None:
+        self._target = target.replace(".", "_").replace("-", "_").replace("/", "_")[:40] if target else ""
         os.makedirs(EXPORT_DIR, exist_ok=True)
 
     def _filename(self, ext: str) -> str:
-        return os.path.join(EXPORT_DIR, f"findings_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}")
+        prefix = f"{self._target}_" if self._target else "findings_"
+        return os.path.join(EXPORT_DIR, f"{prefix}{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}")
 
     def to_csv(self, findings: List[Dict[str, Any]], filename: str | None = None) -> str:
         filepath = filename or self._filename("csv")
@@ -126,7 +128,7 @@ class ExportFormatter:
             pass
 
         # Fallback: styled HTML that renders identically when printed/saved as PDF
-        filepath = filename or self._filename("pdf.html")
+        filepath = filename or self._filename("report.html")
         sev_colors = {
             "critical": "#d32f2f", "high": "#f57c00",
             "medium": "#fbc02d", "low": "#388e3c", "info": "#1976d2",

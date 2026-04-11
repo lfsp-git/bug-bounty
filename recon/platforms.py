@@ -177,8 +177,10 @@ class PlatformManager:
                     safe_handle = sanitize_input(handle).replace('.', '_').replace('-', '_')
                     return {
                         'handle': safe_handle,
+                        'original_handle': handle,
                         'domains': list(domains),
                         'score': 0,
+                        'platform': 'h1',
                         'offers_bounty': prog_data['offers_bounties'],
                         'triage_active': prog_data['triage_active'],
                         'bounty_scopes': bounty_scopes,
@@ -236,6 +238,7 @@ def load_custom_targets() -> List[Dict]:
                     'domain': domain, 
                     'domains': [domain], 
                     'handle': safe_handle, 
+                    'platform': 'custom',
                     'score': 30
                 })
         return t
