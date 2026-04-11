@@ -10,6 +10,7 @@ import pytest
 from unittest.mock import patch, MagicMock, call
 from core.cleaner import (
     _mask,
+    _strip_ansi,
     _tool_version,
     _find_binary,
     _get_venv_python,
@@ -20,6 +21,29 @@ from core.cleaner import (
     _purge_caches,
     _update_deps,
 )
+
+
+# ── _strip_ansi ───────────────────────────────────────────────────────────────
+
+class TestStripAnsi:
+    def test_strips_color_codes(self):
+        assert _strip_ansi("\x1b[32m✓\x1b[0m") == "✓"
+
+    def test_strips_dim_code(self):
+        assert _strip_ansi("\x1b[90mv1.2.3\x1b[0m") == "v1.2.3"
+
+    def test_strips_cursor_codes(self):
+        assert _strip_ansi("\x1b[?25h\x1b[2mHunt3r terminated\x1b[0m") == "Hunt3r terminated"
+
+    def test_plain_text_unchanged(self):
+        assert _strip_ansi("hello world") == "hello world"
+
+    def test_empty_string(self):
+        assert _strip_ansi("") == ""
+
+    def test_multiple_sequences(self):
+        result = _strip_ansi("\x1b[32m✓\x1b[0m subfinder \x1b[90mv2.6.3\x1b[0m")
+        assert result == "✓ subfinder v2.6.3"
 
 
 # ── _mask ─────────────────────────────────────────────────────────────────────
@@ -65,15 +89,16 @@ class TestToolVersion:
             version = _tool_version("/bin/subfinder")
         assert version == "v2.6.3"
 
-    def test_parses_numeric_only_format(self):
+    def test_parses_inf_current_version_format(self):
+        """httpx-style: [INF] Current Version: v1.9.0"""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                stdout="nuclei 3.1.4\n",
-                stderr="",
+                stdout="",
+                stderr="[INF] Current Version: v1.9.0\n",
                 returncode=0,
             )
-            version = _tool_version("/bin/nuclei")
-        assert version == "v3.1.4"
+            version = _tool_version("/bin/httpx")
+        assert version == "v1.9.0"
 
     def test_returns_empty_on_timeout(self):
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 5)):
@@ -266,6 +291,24 @@ class TestRunTests:
             _run_tests()
 
         assert any("FAILED" in m for m in logged)
+
+    def test_hunt3r_terminated_filtered(self):
+        """'Hunt3r terminated' control noise must be suppressed from TEST output."""
+        logged = []
+        def capture_step(label, msg, color=None):
+            logged.append(msg)
+
+        mock_result = MagicMock(
+            returncode=0,
+            stdout="\x1b[?25h\x1b[2mHunt3r terminated\x1b[0m\n5 passed\n",
+            stderr="",
+        )
+        with patch("subprocess.run", return_value=mock_result), \
+             patch("core.cleaner._step", side_effect=capture_step):
+            _run_tests()
+
+        assert not any("Hunt3r terminated" in m for m in logged)
+        assert any("passed" in m for m in logged)
 
 
 # ── _purge_caches ─────────────────────────────────────────────────────────────

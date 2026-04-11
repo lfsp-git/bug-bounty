@@ -55,6 +55,11 @@ _ML_MODEL = "models/fp_filter_v1.pkl"
 _PDTM = os.environ.get("HUNT3R_PDTM_PATH", os.path.expanduser("~/.pdtm/go/bin/"))
 
 
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI/VT100 escape sequences from a string."""
+    return re.sub(r'\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07', '', text)
+
+
 def _step(label: str, msg: str, color=Colors.INFO):
     ui_log(label, msg, color)
 
@@ -178,9 +183,14 @@ def _tool_version(binary: str) -> str:
                 [binary, flag],
                 capture_output=True, text=True, timeout=5
             )
-            out = (r.stdout + r.stderr).strip()
-            # Extract first version-looking token (e.g. v1.2.3 or 1.2.3)
-            m = re.search(r'v?(\d+\.\d+[\.\d]*)', out)
+            out = _strip_ansi((r.stdout + r.stderr).strip())
+            # Prefer explicit "Current Version: vX.Y.Z" pattern (httpx-style)
+            m = re.search(r'[Cc]urrent\s+[Vv]ersion[:\s]+v?(\d+\.\d+[\.\d]*)', out)
+            if not m:
+                # Generic: first vX.Y.Z or X.Y.Z token in the output
+                m = re.search(r'\bv(\d+\.\d+[\.\d]*)\b', out)
+            if not m:
+                m = re.search(r'\b(\d+\.\d+\.\d+)\b', out)
             if m:
                 return f"v{m.group(1)}"
         except Exception:
@@ -205,13 +215,13 @@ def _check_tools() -> Dict[str, bool]:
         path = _find_binary(name)
         found = bool(path)
         version = _tool_version(path) if found else ""
+        version_str = f"  {version}" if version else ""
         if found:
-            label = f"{Colors.SUCCESS}✓{Colors.RESET} {name:<12} {Colors.DIM}{version}{Colors.RESET}"
-            _step("TOOLS", label, Colors.SUCCESS)
+            _step("TOOLS", f"✓  {name:<12}{version_str}", Colors.SUCCESS)
         elif kind == "required":
-            _step("TOOLS", f"{Colors.ERROR}✗{Colors.RESET} {name:<12} {Colors.ERROR}NÃO ENCONTRADO (obrigatório){Colors.RESET}", Colors.ERROR)
+            _step("TOOLS", f"✗  {name:<12}  NAO ENCONTRADO (obrigatorio)", Colors.ERROR)
         else:
-            _step("TOOLS", f"{Colors.WARNING}–{Colors.RESET} {name:<12} {Colors.DIM}não instalado (opcional){Colors.RESET}", Colors.DIM)
+            _step("TOOLS", f"–  {name:<12}  nao instalado (opcional)", Colors.DIM)
         if kind == "required":
             results[name] = found
     return results
@@ -244,11 +254,11 @@ def _check_api_keys() -> Dict[str, bool]:
         val = val.strip()
         set_flag = bool(val)
         if set_flag:
-            _step("APIKEYS", f"{Colors.SUCCESS}✓{Colors.RESET} {label:<22} {Colors.DIM}{_mask(val)}{Colors.RESET}", Colors.SUCCESS)
+            _step("APIKEYS", f"✓  {label:<22}  {_mask(val)}", Colors.SUCCESS)
         elif required:
-            _step("APIKEYS", f"{Colors.ERROR}✗{Colors.RESET} {label:<22} {Colors.ERROR}NÃO CONFIGURADA (obrigatória){Colors.RESET}", Colors.ERROR)
+            _step("APIKEYS", f"✗  {label:<22}  NAO CONFIGURADA (obrigatoria)", Colors.ERROR)
         else:
-            _step("APIKEYS", f"{Colors.WARNING}–{Colors.RESET} {label:<22} {Colors.DIM}não configurada{Colors.RESET}", Colors.DIM)
+            _step("APIKEYS", f"–  {label:<22}  nao configurada", Colors.DIM)
         results[label] = set_flag
     return results
 
@@ -278,9 +288,9 @@ def _check_ml_model() -> bool:
     exists = os.path.isfile(_ML_MODEL)
     if exists:
         size_kb = os.path.getsize(_ML_MODEL) // 1024
-        _step("ML", f"{Colors.SUCCESS}✓{Colors.RESET} Modelo ML encontrado: {_ML_MODEL} ({size_kb} KB)", Colors.SUCCESS)
+        _step("ML", f"✓  Modelo ML encontrado: {_ML_MODEL} ({size_kb} KB)", Colors.SUCCESS)
     else:
-        _step("ML", f"{Colors.WARNING}–{Colors.RESET} Modelo ML não encontrado: {_ML_MODEL} — FP filter rodará sem ML.", Colors.WARNING)
+        _step("ML", f"–  Modelo ML nao encontrado: {_ML_MODEL} — FP filter rodara sem ML.", Colors.WARNING)
     return exists
 
 
@@ -302,16 +312,20 @@ def _run_tests() -> bool:
         [python, "-m", "pytest", "tests/", "-q", "--tb=short"],
         capture_output=True, text=True
     )
-    # Stream captured output through Hunt3r logger
+    # Stream captured output through Hunt3r logger, stripped of ANSI + noise
+    _noise = re.compile(r'Hunt3r terminated|^\s*$|^={3,}|^-{3,}')
     for line in result.stdout.splitlines():
-        if line.strip():
-            color = Colors.ERROR if ("FAILED" in line or "ERROR" in line) else \
-                    Colors.SUCCESS if "passed" in line else Colors.DIM
-            _step("TEST", line, color)
+        clean = _strip_ansi(line)
+        if not clean.strip() or _noise.search(clean):
+            continue
+        color = Colors.ERROR if ("FAILED" in clean or "ERROR" in clean) else \
+                Colors.SUCCESS if "passed" in clean else Colors.DIM
+        _step("TEST", clean, color)
     if result.stderr.strip():
         for line in result.stderr.splitlines():
-            if line.strip() and "warnings" not in line.lower():
-                _step("TEST", line, Colors.DIM)
+            clean = _strip_ansi(line)
+            if clean.strip() and "warnings" not in clean.lower() and not _noise.search(clean):
+                _step("TEST", clean, Colors.DIM)
     ok = result.returncode == 0
     if ok:
         _step("TEST", "Todos os testes passaram. ✓", Colors.SUCCESS)
