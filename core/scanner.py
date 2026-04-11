@@ -543,8 +543,8 @@ class MissionRunner:
         # Aplica filtro sniper
         ns = paths.get("live", "")
         if not os.path.exists(ns) or os.path.getsize(ns) == 0:
-            phase_result["ok"] = False
-            phase_result["errors"].append("No live file for vulnerability phase")
+            # No live hosts is a valid recon outcome, not a failure
+            phase_result["ok"] = True
             phase_result["counts"] = {
                 "_started_at": phase_started,
                 "_ended_at": time.time(),

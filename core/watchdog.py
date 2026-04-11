@@ -157,6 +157,42 @@ def _load_targets_from_history():
         logging.warning(f"Failed to read watchdog fallback history: {e}")
         return []
 
+def _normalize_target_domain(raw: str) -> list:
+    """Normalize a raw bbscope target string into a list of clean domains.
+    
+    Handles: *.domain.com, https://domain.com/path/*, domain.*, comma-separated lists.
+    Returns [] for unparseable or too-broad patterns.
+    """
+    import re as _re
+    raw = raw.lower().strip()
+    if not raw:
+        return []
+    # Split comma-separated domains first
+    parts = [p.strip() for p in raw.split(',') if p.strip()]
+    result = []
+    for part in parts:
+        # Strip protocol
+        part = _re.sub(r'^https?://', '', part)
+        # Strip path/query/fragment (anything after first / or ? or #)
+        part = _re.sub(r'[/?#].*$', '', part)
+        # Strip port
+        part = _re.sub(r':\d+$', '', part)
+        part = part.strip()
+        if not part:
+            continue
+        # TLD wildcard like "domain.*" — too broad, skip
+        if part.endswith('.*'):
+            continue
+        # Leading wildcard like "*.domain.com" → "domain.com"
+        if part.startswith('*.'):
+            part = part[2:]
+        # Must look like a valid domain (has at least one dot)
+        if '.' not in part:
+            continue
+        result.append(part)
+    return result
+
+
 def _process_raw_to_targets(raw_list):
     history = to_set([])
     if os.path.exists(GLOBAL_TARGETS_HISTORY):
@@ -167,16 +203,20 @@ def _process_raw_to_targets(raw_list):
     new_found = []
 
     for raw in raw_list:
-        clean = raw.lower().replace('*.', '').strip()
-        if not clean or any(b in clean for b in TARGET_BLACKLIST):
+        domains = _normalize_target_domain(raw)
+        if not domains:
+            continue
+        # Use first domain as the canonical handle
+        clean = domains[0]
+        if any(b in clean for b in TARGET_BLACKLIST):
             continue
         if clean not in history:
             new_found.append(clean)
             history.add(clean)
         valid_targets.append({
-            'handle': clean.replace('.', '_'),
-            'original_handle': clean,
-            'domains': [clean],
+            'handle': clean.replace('.', '_').replace('-', '_'),
+            'original_handle': raw.strip(),
+            'domains': domains,
             'score': 50
         })
 

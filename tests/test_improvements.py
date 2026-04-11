@@ -180,17 +180,17 @@ def test_timeout_config():
     with open('recon/engines.py', 'r') as f:
         content = f.read()
     
-    # Check for timeout setting
-    has_2s_timeout = '"-timeout", "2"' in content
-    old_5s_timeout = '"-timeout", "5"' in content
+    # Check for reasonable timeout setting (5s is better than 2s for accuracy)
+    has_5s_timeout = '"-timeout", "5"' in content
+    has_too_short = '"-timeout", "2"' in content
     
-    status = "✅ PASS" if (has_2s_timeout and not old_5s_timeout) else "❌ FAIL"
-    print(f"{status} | Timeout set to 2 seconds (was 5)")
+    status = "✅ PASS" if (has_5s_timeout and not has_too_short) else "❌ FAIL"
+    print(f"{status} | Timeout set to 5 seconds (balanced speed/accuracy)")
     
-    if has_2s_timeout:
-        print("  Expected impact: ~40% speedup for responsive targets")
+    if has_5s_timeout:
+        print("  Expected impact: fewer missed findings on slower targets")
     
-    assert has_2s_timeout and not old_5s_timeout
+    assert has_5s_timeout and not has_too_short
 
 def test_adaptive_nuclei_timeout_override():
     """Verify run_nuclei supports adaptive timeout override parameter."""
