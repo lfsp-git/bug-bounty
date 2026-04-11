@@ -15,6 +15,14 @@ from pathlib import Path
 logging.basicConfig(level=logging.ERROR)  # no-op: overridden by core.logger.setup_logging()
 logger = logging.getLogger(__name__)
 
+try:
+    import numpy as np
+    import pandas as pd
+    _ML_DEPS_AVAILABLE = True
+except ImportError as _ml_import_err:
+    _ML_DEPS_AVAILABLE = False
+    logger.warning(f"ML dependencies unavailable ({_ml_import_err}). ML scoring disabled. Run: pip install numpy pandas")
+
 class MLFilter:
     """ML-based false positive detector using trained LightGBM model"""
     
@@ -70,6 +78,9 @@ class MLFilter:
                 # Model not available, don't filter
                 return False, 0.0
         
+        if not _ML_DEPS_AVAILABLE:
+            return False, 0.0
+
         try:
             # Extract features from finding
             features = cls._extract_features(finding)
@@ -77,8 +88,6 @@ class MLFilter:
                 return False, 0.0
             
             # Predict probability of being FP
-            import numpy as np
-            import pandas as pd
             feature_names = getattr(cls._model, "feature_name_", None)
             X_raw = np.array([features])
             X = pd.DataFrame(X_raw, columns=feature_names) if feature_names else X_raw

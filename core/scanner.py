@@ -585,10 +585,10 @@ class MissionRunner:
         FalsePositiveKiller.sanitize_findings(findings_file)
         
         # Step 2: AI validation only if score warrants it
-        if self.target.get('score', 0) >= 80:
+        if self.target.get('score', 0) >= 60:
             self._validate_findings_with_ai(findings_file)
         else:
-            ui_log("AI VALIDATION", "Score < 80. Pulando validação com IA.", Colors.INFO)
+            ui_log("AI VALIDATION", "Score < 60. Pulando validação com IA.", Colors.INFO)
     
     def _validate_findings_with_ai(self, findings_file):
         """Usa IA para validar vulnerabilidades críticas/high."""
