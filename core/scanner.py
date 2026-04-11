@@ -404,11 +404,20 @@ class MissionRunner:
         live_file = paths["live"]
         if not os.path.exists(live_file) or os.path.getsize(live_file) == 0:
             ui_log("INFO", "Nenhum subdomínio vivo. Pulando fase tática.", Colors.WARNING)
-            phase_result["ok"] = False
-            phase_result["errors"].append("No live subdomains for tactical phase")
+            phase_result["ok"] = True
             phase_result["counts"] = {
+                "inputs": 0,
+                "katana_urls": 0,
+                "js_secrets": 0,
+                "findings": 0,
                 "_started_at": phase_started,
                 "_ended_at": time.time(),
+            }
+            phase_result["paths"] = {
+                "input": live_file,
+                "katana": paths["live"] + ".katana",
+                "js_secrets": paths["live"] + ".js_secrets",
+                "findings": paths["fin"],
             }
             return phase_result
         
@@ -732,7 +741,6 @@ class ProOrchestrator:
         # Initialize custom templates once on startup
         try:
             self.custom_template_paths = load_custom_templates()
-            ui_log("INIT", f"Loaded {len(self.custom_template_paths)} Hunt3r custom templates", Colors.SUCCESS)
         except Exception as e:
             ui_log("ERR", f"Failed to load custom templates: {e}", Colors.WARNING)
             self.custom_template_paths = []
