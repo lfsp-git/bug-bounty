@@ -570,3 +570,23 @@ class TestWatchdogUI(unittest.TestCase):
     def test_small_terminal_guard_callable(self):
         from core.ui import _can_use_fullscreen_live
         self.assertIsInstance(_can_use_fullscreen_live(), bool)
+
+    def test_watchdog_activity_log_file_write(self):
+        import os
+        import tempfile
+        from core import ui as ui_mod
+
+        with tempfile.TemporaryDirectory() as td:
+            log_path = os.path.join(td, "activity.log")
+            prev_watchdog = ui_mod._WATCHDOG_MODE
+            with patch.object(ui_mod, "ACTIVITY_LOG_FILE", log_path):
+                ui_mod.ui_enable_watchdog_mode()
+                ui_mod._activity_push("W1", "Nuclei", "Done in 0s", "green")
+                ui_mod._render_stop.set()
+                if ui_mod._render_thread is not None:
+                    ui_mod._render_thread.join(timeout=0.5)
+                with open(log_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.assertIn("HUNT3R WATCHDOG ACTIVITY START", content)
+                self.assertIn("[W1] Nuclei", content)
+            ui_mod._WATCHDOG_MODE = prev_watchdog

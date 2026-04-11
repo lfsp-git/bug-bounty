@@ -63,6 +63,8 @@ logging.basicConfig(
     datefmt='%H:%M:%S',
     handlers=[logging.FileHandler('logs/hunt3r.log', encoding='utf-8')]
 )
+ACTIVITY_LOG_FILE = "activity.log"
+_activity_file_lock = threading.Lock()
 
 ANSI_ESCAPE_RE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
@@ -266,6 +268,15 @@ def _activity_push(worker_id: str, module: str, message: str, color: str = "whit
     ts = datetime.now().strftime("%H:%M:%S")
     with _activity_lock:
         _activity.append((ts, worker_id, module, message, color))
+    if _WATCHDOG_MODE:
+        try:
+            clean_module = sanitize_input(module)
+            clean_message = sanitize_input(message)
+            with _activity_file_lock:
+                with open(ACTIVITY_LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write(f"{ts} [{worker_id}] {clean_module:<14} {clean_message}\n")
+        except OSError as e:
+            logging.error(f"Failed to write activity log file: {e}")
     logging.info(f"[{worker_id}] {module} - {message}")
 
 # ─────────────────────────────────────────────────────────────
@@ -353,6 +364,12 @@ def ui_enable_watchdog_mode():
     """Enable watchdog mode: starts Rich Live full-screen display."""
     global _WATCHDOG_MODE
     _WATCHDOG_MODE = True
+    try:
+        with _activity_file_lock:
+            with open(ACTIVITY_LOG_FILE, "w", encoding="utf-8") as f:
+                f.write(f"=== HUNT3R WATCHDOG ACTIVITY START {datetime.now().isoformat()} ===\n")
+    except OSError as e:
+        logging.error(f"Failed to initialize activity log file: {e}")
     _render_stop.clear()
     rt = threading.Thread(target=_render_loop, daemon=True, name="RenderThread")
     rt.start()
