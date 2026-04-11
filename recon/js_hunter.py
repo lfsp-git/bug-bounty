@@ -59,6 +59,24 @@ class JSHunter:
         'jwt_token': re.compile(r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'),
     }
 
+    # Severity by pattern type — used when writing findings so notifier can filter
+    SEVERITY = {
+        'aws_access_key':     'CRITICAL',
+        'aws_secret_key':     'CRITICAL',
+        'private_key':        'CRITICAL',
+        'stripe_key':         'CRITICAL',
+        'google_api':         'HIGH',
+        'slack_webhook':      'HIGH',
+        'discord_webhook':    'HIGH',
+        'auth_token':         'HIGH',
+        'jwt_token':          'HIGH',
+        'firebase_db':        'HIGH',
+        'generic_api_key':    'MEDIUM',
+        'password_or_secret': 'MEDIUM',
+        'generic_url_param':  'LOW',
+        'interactsh':         'LOW',
+    }
+
     @classmethod
     def _is_valid_js(cls, url_or_path):
         """Return True only for .js, .mjs, or .ts files."""
@@ -193,6 +211,7 @@ class JSHunter:
                     'value': raw[:200],
                     'source': source,
                     'url': source if source.startswith('http') else '',
+                    'severity': cls.SEVERITY.get(pattern_name, 'MEDIUM'),
                 })
 
         return findings

@@ -15,12 +15,18 @@ def score_program(program: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
 
 def score_watchdog_target(target: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     """Score watchdog target dicts using the same centralized scorer."""
+    domains = target.get("domains") or []
     program_data = {
-        "handle": target.get("original_handle", target.get("handle", "unknown")),
+        "original_handle": target.get("original_handle", ""),
+        "handle": target.get("handle", "unknown"),
         "platform": target.get("platform", "unknown"),
+        "domains": domains,
+        "offers_bounty": target.get("offers_bounty", True),
+        "bounty_scopes": target.get("bounty_scopes", 0),
+        "crit_scopes": target.get("crit_scopes", 0),
         "created_at": target.get("created_at"),
         "bounty_range": target.get("bounty_range", (100, 1000)),
-        "scope_size": target.get("scope_size", 100),
+        "scope_size": target.get("scope_size") or len(domains) or 1,
         "last_found": target.get("last_found"),
     }
     return score_program(program_data)

@@ -231,6 +231,7 @@ def _prioritize_targets_by_bounty_potential(targets):
     scored_targets = []
     for target in targets:
         score, breakdown = score_watchdog_target(target)
+        target['score'] = round(score, 1)  # Write back so scanner can read it
         scored_targets.append((target, score, breakdown))
 
     scored_targets.sort(key=lambda x: x[1], reverse=True)

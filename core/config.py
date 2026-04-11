@@ -54,8 +54,8 @@ else:
 # ---------------------------------------------------------------------------
 # Watchdog
 # ---------------------------------------------------------------------------
-WATCHDOG_SLEEP_MIN: int = 14400   # 4 h
-WATCHDOG_SLEEP_MAX: int = 21600   # 6 h
+WATCHDOG_SLEEP_MIN: int = 3600    # 1 h
+WATCHDOG_SLEEP_MAX: int = 7200    # 2 h
 WATCHDOG_MAX_TARGETS: int = 50
 WATCHDOG_CACHE_TTL: int = 43200   # 12 h
 WATCHDOG_HOT_COUNT: int = 15
