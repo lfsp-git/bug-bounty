@@ -203,7 +203,12 @@ def _prioritize_targets_by_bounty_potential(targets):
 
     return [t[0] for t in scored_targets]
 
+_SCAN_HISTORY_TTL = 21600  # 6 hours — re-scan targets that weren't recently active
+
 def _should_process_target(handle):
+    from core.scanner import _DISABLE_RUNTIME_CACHE
+    if _DISABLE_RUNTIME_CACHE:
+        return True
     history_file = SCAN_HISTORY_FILE
     os.makedirs(os.path.dirname(history_file), exist_ok=True)
     history = {}
@@ -221,7 +226,7 @@ def _should_process_target(handle):
     if last_scan and not has_changes:
         try:
             scan_time = time.mktime(time.strptime(last_scan, '%Y-%m-%d %H:%M:%S'))
-            if time.time() - scan_time < 86400:
+            if time.time() - scan_time < _SCAN_HISTORY_TTL:
                 return False
         except ValueError:
             pass
@@ -323,31 +328,29 @@ def run_watchdog():
                 orch = ProOrchestrator(IntelMiner(AIClient()))
                 tasks.append((orch, target, idx, total))
 
-            with ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
-                futures = [executor.submit(_scan_target_parallel_wrapper, t) for t in tasks]
-                try:
-                    for future in as_completed(futures):
-                        if ui_interrupt_requested():
-                            ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
-                            executor.shutdown(wait=False, cancel_futures=True)
-                            return
-                        result = future.result()
-                        if result.get('success'):
-                            w = result.get('worker', '?')
-                            ui_log("WATCHDOG", f"[{w}] Concluido: {result['handle']}", Colors.SUCCESS)
-                            if result.get("changes"):
-                                cycle_metrics["changed"] += 1
-                            payload = result.get("results", {})
-                            metrics = payload.get("metrics", {}).get("phase_duration_seconds", {})
-                            cycle_metrics["phase_seconds"]["recon"] += float(metrics.get("recon", 0.0))
-                            cycle_metrics["phase_seconds"]["vulnerability"] += float(metrics.get("vulnerability", 0.0))
-                        else:
-                            if result.get("reason") != "cached":
-                                cycle_metrics["errors"] += 1
-                except KeyboardInterrupt:
-                    ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    return
+            executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS)
+            futures = [executor.submit(_scan_target_parallel_wrapper, t) for t in tasks]
+            try:
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result.get('success'):
+                        w = result.get('worker', '?')
+                        ui_log("WATCHDOG", f"[{w}] Concluido: {result['handle']}", Colors.SUCCESS)
+                        if result.get("changes"):
+                            cycle_metrics["changed"] += 1
+                        payload = result.get("results", {})
+                        metrics = payload.get("metrics", {}).get("phase_duration_seconds", {})
+                        cycle_metrics["phase_seconds"]["recon"] += float(metrics.get("recon", 0.0))
+                        cycle_metrics["phase_seconds"]["vulnerability"] += float(metrics.get("vulnerability", 0.0))
+                    else:
+                        if result.get("reason") not in ("cached", "interrupted"):
+                            cycle_metrics["errors"] += 1
+            except KeyboardInterrupt:
+                ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
+                executor.shutdown(wait=False, cancel_futures=True)
+                return
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
             if cycle_metrics["targets"] > 0:
                 avg_recon = cycle_metrics["phase_seconds"]["recon"] / cycle_metrics["targets"]
                 avg_vuln = cycle_metrics["phase_seconds"]["vulnerability"] / cycle_metrics["targets"]

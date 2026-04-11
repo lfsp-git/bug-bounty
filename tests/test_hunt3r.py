@@ -623,10 +623,11 @@ class TestWatchdogUI(unittest.TestCase):
                 self.assertIn("[W1] Nuclei", content)
             ui_mod._WATCHDOG_MODE = prev_watchdog
 
-    def test_sigint_handler_sets_interrupt_flag(self):
+    def test_sigint_handler_sets_interrupt_flag_and_raises(self):
         from core import ui as ui_mod
         ui_mod._interrupt_event.clear()
-        ui_mod._sigint_handler(None, None)
+        with self.assertRaises(KeyboardInterrupt):
+            ui_mod._sigint_handler(None, None)
         self.assertTrue(ui_mod.ui_interrupt_requested())
 
     def test_watchdog_ui_update_status_skips_spinner_frames(self):

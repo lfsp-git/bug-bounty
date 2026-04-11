@@ -735,6 +735,8 @@ atexit.register(_terminal_cleanup)
 def _sigint_handler(signum, frame):
     _render_stop.set()
     _interrupt_event.set()
+    if not sys.is_finalizing():
+        raise KeyboardInterrupt
 
 
 def ui_interrupt_requested() -> bool:
