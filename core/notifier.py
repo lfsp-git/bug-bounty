@@ -1,7 +1,15 @@
 """
-HUNT3R v2.2 - Notifier [Telegram + Discord]
-Telegram (Prioridade Maxima): Critical, High, JS secrets
-Discord (Monitoramento): Medium, Low, Info, Recon logs
+HUNT3R v2.3 - Notifier [Telegram + Discord]
+
+Telegram (High-priority findings only):
+  - Critical, High, Medium vulnerabilities
+  - JS secrets (Critical/High/Medium)
+
+Discord (Operational monitoring):
+  - Scan completion statistics per target
+  - Watchdog heartbeat / rain-check messages
+  - Error alerts
+  - NO individual vulnerability details (keeps Discord clean)
 """
 
 import os
@@ -277,43 +285,18 @@ class NotificationDispatcher:
 
     @classmethod
     def alert_nuclei_discord_batch(cls, findings: list, target: str):
-        """Group low-noise Info/Low findings into a single Discord embed."""
-        dc = NotifierConfig.discord()
-        if not dc or not findings:
-            return
-
-        # Build a summary table (max 15 entries to avoid embed overflow)
-        entries = []
-        for d in findings[:15]:
-            sev = _get_sev(d, "?").upper()
-            tid = d.get("template-id", "unknown")
-            matched = d.get("matched-at", "")[:50]
-            entries.append(f"`[{sev:>8}]` {tid} — `{matched}`")
-
-        description = "\n".join(entries)
-        if len(findings) > 15:
-            description += f"\n...e mais {len(findings) - 15} findings (filtrados)."
-
-        embed = {
-            "title": f"[Hunt3r Scan Log] {target}",
-            "description": description or "Nenhum finding adicional.",
-            "color": 0x555555,
-            "footer": {"text": f"Total: {len(findings)} | Info/Low batched"},
-            "timestamp": _utc_now().isoformat(),
-        }
-        _dc_post(dc, embed)
+        """Deprecated: Info/Low findings are dropped. Kept for backward compatibility."""
+        pass  # Low/Info no longer sent to Discord
 
     @classmethod
     def alert_nuclei(cls, findings_path, target):
         """
-        Legacy: Parse findings and route by severity.
-        - Critical/High → Telegram
-        - Medium/Low/Info → Discord
-        Kept for backward compatibility with Watchdog mode.
+        Parse findings file and route by severity to Telegram only.
+        Critical/High/Medium → Telegram.
+        Info/Low → dropped (no Discord spam).
         """
         tg = NotifierConfig.telegram()
-        dc = NotifierConfig.discord()
-        if not tg and not dc:
+        if not tg:
             return
         if not os.path.exists(findings_path) or os.path.getsize(findings_path) == 0:
             return
@@ -330,38 +313,32 @@ class NotificationDispatcher:
                         continue
 
                     sev = _get_sev(d, "info").upper()
+                    if sev not in ("CRITICAL", "HIGH", "MEDIUM"):
+                        continue
+
                     tid = d.get("template-id", "unknown")
                     matched = d.get("matched-at", "")
                     cve = d.get("cve-id", "N/A")
                     is_deep = d.get("_deep_scan", False)
 
-                    # Telegram: Critical + High + Medium
-                    if sev in ("CRITICAL", "HIGH", "MEDIUM") and tg:
-                        legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                        if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
-                            continue
-                        html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
-                        _tg_post(tg[0], tg[1], html)
-
-                    # Discord: Low + Info (monitoring)
-                    if sev in ("LOW", "INFO") and dc:
-                        embed = _build_dc_nuclei_embed(sev, target, tid, matched, cve)
-                        _dc_post(dc, embed)
+                    legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
+                    if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
+                        continue
+                    html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
+                    _tg_post(tg[0], tg[1], html)
         except Exception as e:
             logging.error(f"Notifier Nuclei error: {e}")
 
     @classmethod
     def alert_js_secrets(cls, js_file, target):
-        """Route JS secrets by severity: Critical/High/Medium → Telegram, Low → Discord."""
+        """Route JS secrets: Critical/High/Medium → Telegram only. Low → dropped."""
         tg = NotifierConfig.telegram()
-        dc = NotifierConfig.discord()
-        if not tg and not dc:
+        if not tg:
             return
         if not os.path.exists(js_file) or os.path.getsize(js_file) == 0:
             return
 
         tg_count = 0
-        dc_count = 0
         try:
             with open(js_file, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -378,46 +355,156 @@ class NotificationDispatcher:
                     val = d.get("value", "")[:80]
                     severity = d.get("severity", "low").upper()
 
-                    # Probe generic_url_params before notifying — skip if not accessible without auth
+                    # Probe generic_url_params before notifying
                     if stype == "generic_url_param":
                         probe = _probe_generic_url(val)
                         if probe == "skip":
                             continue
-                        severity = "HIGH"  # Endpoint responded 200+JSON without auth → escalate
+                        severity = "HIGH"
 
-                    if severity in ("CRITICAL", "HIGH", "MEDIUM") and tg:
-                        emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡"}.get(severity, "🟣")
-                        html = (
-                            f"{emoji} <b>[JS SECRET] [{severity}] {target}</b>\n"
-                            f"Type: <code>{_tg_escape(stype)}</code>\n"
-                            f"Source: <code>{_tg_escape(source[:80])}</code>\n"
-                            f"Value: <code>{_tg_escape(val)}</code>\n"
-                        )
-                        legacy_key = f"tg:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
-                        if _is_duplicate_and_record_keys(_dedup_keys("tg:js", legacy_key, target, severity, stype, source, val)):
-                            continue
-                        _tg_post(tg[0], tg[1], html)
-                        tg_count += 1
-                    elif dc:
-                        legacy_key = f"dc:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
-                        if _is_duplicate_and_record_keys(_dedup_keys("dc:js", legacy_key, target, severity, stype, source, val)):
-                            continue
-                        embed = {
-                            "title": f"[JS Secret] {target}",
-                            "description": f"Type: `{stype}`\nSource: `{source[:80]}`\nValue: `{val}`",
-                            "color": 0x9B59B6,
-                        }
-                        _dc_post(dc, embed)
-                        dc_count += 1
+                    if severity not in ("CRITICAL", "HIGH", "MEDIUM"):
+                        continue  # drop low/info secrets
 
-                    if tg_count + dc_count >= 30:
+                    emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡"}.get(severity, "🟣")
+                    html = (
+                        f"{emoji} <b>[JS SECRET] [{severity}] {target}</b>\n"
+                        f"Type: <code>{_tg_escape(stype)}</code>\n"
+                        f"Source: <code>{_tg_escape(source[:80])}</code>\n"
+                        f"Value: <code>{_tg_escape(val)}</code>\n"
+                    )
+                    legacy_key = f"tg:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
+                    if _is_duplicate_and_record_keys(_dedup_keys("tg:js", legacy_key, target, severity, stype, source, val)):
+                        continue
+                    _tg_post(tg[0], tg[1], html)
+                    tg_count += 1
+
+                    if tg_count >= 30:
                         break  # Prevent flood
         except Exception as e:
             logging.error(f"Notifier JS alert error: {e}")
 
-        total = tg_count + dc_count
-        if total > 0:
-            ui_log("NOTIFIER", f"JS secrets: {tg_count} → Telegram, {dc_count} → Discord", Colors.SUCCESS)
+        if tg_count > 0:
+            ui_log("NOTIFIER", f"JS secrets: {tg_count} → Telegram", Colors.SUCCESS)
+
+    @classmethod
+    def alert_scan_complete(cls, target: str, platform: str, results: dict):
+        """Send scan statistics summary to Discord.
+
+        Posted after every mission — gives rain-check visibility without
+        flooding with individual vuln details.
+        """
+        dc = NotifierConfig.discord()
+        if not dc:
+            return
+
+        _PLATFORM_NAMES = {
+            "h1": "HackerOne", "bc": "Bugcrowd", "it": "Intigriti",
+            "ywh": "YesWeHack", "hf": "HackFarm",
+        }
+        platform_label = _PLATFORM_NAMES.get(str(platform).lower(), platform.upper() if platform and platform != "unknown" else "Custom")
+
+        subs   = results.get("subdomains", 0)
+        live   = results.get("live_hosts", results.get("endpoints", 0))
+        eps    = results.get("endpoints", 0)
+        sec    = results.get("js_secrets", 0)
+        vulns  = results.get("vulnerabilities", 0)
+        errors = len(results.get("errors", []))
+
+        # Severity breakdown
+        sev = results.get("severity_counts", {})
+        crits = sev.get("critical", 0)
+        highs = sev.get("high", 0)
+        meds  = sev.get("medium", 0)
+
+        # Status indicator
+        if errors:
+            status_color = 0xFF4500   # orange = ran with errors
+            status_icon  = "⚠️"
+        elif crits or highs:
+            status_color = 0xFF0000   # red = critical/high found
+            status_icon  = "🔴"
+        elif meds or sec:
+            status_color = 0xFFFF00   # yellow = medium/secrets found
+            status_icon  = "🟡"
+        else:
+            status_color = 0x2ECC71   # green = clean
+            status_icon  = "✅"
+
+        desc_lines = [
+            f"📡 **Subdomains:** {subs}",
+            f"🌐 **Hosts ativos:** {live}",
+            f"🔗 **Endpoints:** {eps}",
+            f"🟣 **JS Secrets:** {sec}",
+        ]
+        if crits or highs or meds:
+            vuln_parts = []
+            if crits: vuln_parts.append(f"🔴 {crits} Critical")
+            if highs: vuln_parts.append(f"🟠 {highs} High")
+            if meds:  vuln_parts.append(f"🟡 {meds} Medium")
+            desc_lines.append(f"🐛 **Vulns:** {' · '.join(vuln_parts)}")
+        else:
+            desc_lines.append(f"🐛 **Vulns:** 0")
+        if errors:
+            desc_lines.append(f"⚠️ **Erros de fase:** {errors}")
+
+        embed = {
+            "title": f"{status_icon} Hunt3r — {target}",
+            "description": "\n".join(desc_lines),
+            "color": status_color,
+            "fields": [
+                {"name": "Plataforma", "value": platform_label, "inline": True},
+                {"name": "Target", "value": f"`{target}`", "inline": True},
+            ],
+            "footer": {"text": "Hunt3r EXCALIBUR · Watchdog"},
+            "timestamp": _utc_now().isoformat(),
+        }
+        _dc_post(dc, embed)
+
+    @classmethod
+    def alert_watchdog_heartbeat(cls, cycle: int, targets_scanned: int,
+                                  errors: int, avg_recon_s: float, avg_vuln_s: float,
+                                  next_cycle_in: str = ""):
+        """Discord rain-check: confirms watchdog is alive and reports cycle metrics."""
+        dc = NotifierConfig.discord()
+        if not dc:
+            return
+
+        color = 0xFF4500 if errors else 0x3498DB  # orange if errors, blue otherwise
+        icon  = "⚠️" if errors else "🤖"
+
+        desc = (
+            f"📊 **Ciclo #{cycle}** concluído\n"
+            f"🎯 Alvos escaneados: **{targets_scanned}**\n"
+            f"⏱ Avg recon: **{avg_recon_s:.0f}s** · Avg vuln: **{avg_vuln_s:.0f}s**\n"
+        )
+        if errors:
+            desc += f"⚠️ Erros: **{errors}**\n"
+        if next_cycle_in:
+            desc += f"😴 Próximo ciclo em: **{next_cycle_in}**"
+
+        embed = {
+            "title": f"{icon} Hunt3r Watchdog — Rain-Check",
+            "description": desc,
+            "color": color,
+            "footer": {"text": "Hunt3r EXCALIBUR · Watchdog"},
+            "timestamp": _utc_now().isoformat(),
+        }
+        _dc_post(dc, embed)
+
+    @classmethod
+    def alert_watchdog_error(cls, message: str):
+        """Discord alert for critical watchdog errors."""
+        dc = NotifierConfig.discord()
+        if not dc:
+            return
+        embed = {
+            "title": "🚨 Hunt3r — Erro Crítico",
+            "description": f"```\n{message[:1900]}\n```",
+            "color": 0xFF0000,
+            "footer": {"text": "Hunt3r EXCALIBUR · Watchdog"},
+            "timestamp": _utc_now().isoformat(),
+        }
+        _dc_post(dc, embed)
 
     @classmethod
     def recon_log(cls, message):

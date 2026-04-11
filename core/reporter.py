@@ -34,8 +34,9 @@ def _sev(finding: Dict) -> str:
 class BugBountyReporter:
     """Generate submission-ready Markdown reports from Nuclei/JS findings."""
 
-    def __init__(self, handle: str):
+    def __init__(self, handle: str, platform: str = "unknown"):
         self.handle = handle
+        self.platform = platform
         os.makedirs(REPORTS_DIR, exist_ok=True)
 
     def load_findings(self, findings_path: str) -> List[Dict[str, Any]]:
@@ -90,12 +91,18 @@ class BugBountyReporter:
         js_secrets_path: str | None = None,
         subdomains_count: int = 0,
         endpoints_count: int = 0,
+        platform: str | None = None,
     ) -> str:
         """
         Generate full bug bounty report. Returns path to report file.
         """
+        if platform:
+            self.platform = platform
         findings = self.load_findings(findings_path)
         js_secrets = self.load_js_secrets(js_secrets_path) if js_secrets_path else []
+
+        # Only keep medium/high/critical findings in report — info/low are noise
+        findings = [f for f in findings if _sev(f) in ("critical", "high", "medium")]
 
         # Sort by severity
         findings.sort(key=lambda x: SEVERITY_ORDER.get(_sev(x), 99))
@@ -129,14 +136,17 @@ class BugBountyReporter:
         lines.append(f"# Hunt3r Scan Report — `{self.handle}`")
         lines.append(f"**Generated:** {date_str}  ")
         lines.append(f"**Target:** `{self.handle}`  ")
+        _platform_label = {
+            "h1": "HackerOne", "bc": "Bugcrowd", "it": "Intigriti",
+            "ywh": "YesWeHack", "hf": "HackFarm",
+        }.get(str(self.platform).lower(), self.platform.upper() if self.platform != "unknown" else "Custom/Manual")
+        lines.append(f"**Platform:** {_platform_label}  ")
         lines.append(f"**Tool:** Hunt3r v1.0-EXCALIBUR\n")
 
         # Summary table
         crits = sum(1 for f in findings if _sev(f) == "critical")
         highs = sum(1 for f in findings if _sev(f) == "high")
         meds = sum(1 for f in findings if _sev(f) == "medium")
-        lows = sum(1 for f in findings if _sev(f) == "low")
-        infos = sum(1 for f in findings if _sev(f) == "info")
 
         lines.append("## 📊 Scan Summary\n")
         lines.append("| Metric | Count |")
@@ -146,8 +156,6 @@ class BugBountyReporter:
         lines.append(f"| 🔴 Critical | {crits} |")
         lines.append(f"| 🟠 High | {highs} |")
         lines.append(f"| 🟡 Medium | {meds} |")
-        lines.append(f"| 🔵 Low | {lows} |")
-        lines.append(f"| ⚪ Info | {infos} |")
         lines.append(f"| 🟣 JS Secrets | {len(js_secrets)} |")
         lines.append("")
 
@@ -173,22 +181,6 @@ class BugBountyReporter:
                 lines.append(f"- `{secret}`")
             if len(js_secrets) > 50:
                 lines.append(f"\n*...and {len(js_secrets) - 50} more. See full findings file.*")
-            lines.append("")
-
-        # Low / Info (brief table)
-        low_info = [f for f in findings if _sev(f) in ("low", "info")]
-        if low_info:
-            lines.append("## ℹ️ Low / Informational\n")
-            lines.append("| Severity | Template | Host | Matched |")
-            lines.append("|----------|----------|------|---------|")
-            for f in low_info[:30]:
-                sev = _sev(f).upper()
-                tid = f.get("template-id", "?")
-                host = f.get("host", "?")[:50]
-                matched = f.get("matched-at", "?")[:60]
-                lines.append(f"| {sev} | `{tid}` | `{host}` | `{matched}` |")
-            if len(low_info) > 30:
-                lines.append(f"\n*...and {len(low_info) - 30} more.*")
             lines.append("")
 
         # Submission checklist

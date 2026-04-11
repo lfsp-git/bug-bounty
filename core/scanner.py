@@ -702,24 +702,31 @@ class MissionRunner:
     def _notify_and_report(self, paths: dict, results: dict):
         """Send notifications and generate bug bounty report after scan."""
         h = self.target.get('handle', 'unknown')
+        platform = self.target.get('platform', 'unknown')
         findings_path = paths["fin"]
         js_secrets_path = paths["live"] + ".js_secrets"
 
-        # 1. Notify via Telegram (Critical/High/Medium) and Discord (Low/Info)
+        # 1. Telegram: Critical/High/Medium vulnerabilities only
         try:
             NotificationDispatcher.alert_nuclei(findings_path, h)
         except Exception as e:
             logging.warning(f"Notification failed: {e}")
 
-        # 2. Alert JS secrets to Telegram
+        # 2. Telegram: JS secrets (Critical/High/Medium only)
         try:
             NotificationDispatcher.alert_js_secrets(js_secrets_path, h)
         except Exception as e:
             logging.warning(f"JS secrets notification failed: {e}")
 
-        # 3. Generate bug bounty report (Markdown, ready for submission)
+        # 3. Discord: scan statistics summary (no individual vulns)
         try:
-            reporter = BugBountyReporter(h)
+            NotificationDispatcher.alert_scan_complete(h, platform, results)
+        except Exception as e:
+            logging.warning(f"Discord scan summary failed: {e}")
+
+        # 4. Generate bug bounty report (Markdown, ready for submission)
+        try:
+            reporter = BugBountyReporter(h, platform=platform)
             report_path = reporter.generate(
                 findings_path=findings_path,
                 js_secrets_path=js_secrets_path,
