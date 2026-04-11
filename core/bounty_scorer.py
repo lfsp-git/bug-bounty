@@ -1,269 +1,249 @@
 """
 Bounty Program Scorer - Prioritizes targets by likelihood of finding vulnerabilities
 
-Scoring Metrics:
-1. Recency (weight: 40%) - New programs = higher priority
-2. Budget/Bounty Range (weight: 30%) - Higher bounties = better ROI
-3. Program Scope (weight: 20%) - Larger scope = more attack surface
-4. Previous Finding Rate (weight: 10%) - Historical success predictor
+Scoring strategy (based on data actually available from bbscope/APIs):
+1. Wildcard scope   (35%) — *.domain.com = full attack surface
+2. Domain breadth   (25%) — more unique domains = more endpoints to probe
+3. Target quality   (25%) — TLD/brand signals + bounty eligibility metadata
+4. Platform signal  (15%) — h1/it/bc have different historical finding densities
+
+All scores are 0-100. Final score ≥ 60 triggers AI validation.
 """
 
+import re
 import time
-from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
-from enum import Enum
 
-class BountyPlatform(Enum):
-    """Supported bounty platforms"""
-    HACKERONE = "h1"
-    BUGCROWD = "bc"
-    INTIGRITI = "it"
-    YESWEHACK = "ywh"
-    HACKFARM = "hf"
+# TLDs / patterns that correlate with higher vuln density (tech companies,
+# funded startups, fintech) vs. low-value noise.
+_HIGH_VALUE_TLDS  = {".io", ".ai", ".app", ".dev", ".finance", ".financial",
+                     ".money", ".pay", ".bank", ".crypto", ".security"}
+_MID_VALUE_TLDS   = {".com", ".net", ".co", ".cloud", ".tech", ".digital"}
+_LOW_VALUE_TLDS   = {".gov", ".mil", ".edu", ".org", ".info", ".biz", ".site",
+                     ".online", ".click", ".xyz"}
 
-class ProgramScope(Enum):
-    """Scope size categories"""
-    HUGE = 4       # 1000+ subdomains (vhx.tv, nordvpn, etc)
-    LARGE = 3      # 100-1000 subs
-    MEDIUM = 2     # 10-100 subs
-    SMALL = 1      # <10 subs
+# Platform historical finding densities (normalised 0-100).
+_PLATFORM_SCORE = {"h1": 75, "bc": 60, "it": 65, "ywh": 55, "hf": 50}
+_PLATFORM_DEFAULT = 55
 
-class BountyRange(Enum):
-    """Bounty reward levels"""
-    CRITICAL = 4   # $5000+
-    HIGH = 3       # $1000-5000
-    MEDIUM = 2     # $100-1000
-    LOW = 1        # <$100
 
 class BountyScorer:
-    """Scores bounty programs for hunt priority"""
-    
-    # Default scoring weights (can be tuned)
+    """Scores bounty programs for hunt priority using signals available at runtime."""
+
     WEIGHTS = {
-        'recency': 0.40,      # New programs = most important
-        'budget': 0.30,       # Budget matters
-        'scope': 0.20,        # Scope affects ROI
-        'finding_rate': 0.10  # Historical data
+        "wildcard":  0.35,
+        "breadth":   0.25,
+        "quality":   0.25,
+        "platform":  0.15,
     }
-    
-    # Historical finding rates by platform/scope
-    FINDING_RATES = {
-        ('h1', 'huge'): 0.08,    # HackerOne huge scope: 8% chance of finding something
-        ('h1', 'large'): 0.12,
-        ('h1', 'medium'): 0.15,
-        ('h1', 'small'): 0.10,
-        ('bc', 'huge'): 0.06,    # Bugcrowd typically harder
-        ('bc', 'large'): 0.10,
-        ('bc', 'medium'): 0.12,
-        ('bc', 'small'): 0.08,
-        ('it', 'huge'): 0.07,    # Intigriti mid-range
-        ('it', 'large'): 0.11,
-        ('it', 'medium'): 0.13,
-        ('it', 'small'): 0.09,
-    }
-    
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
     @classmethod
     def score_program(cls, program: Dict, current_timestamp: float = None) -> Tuple[float, Dict]:
+        """Score a single program dict.
+
+        Expected keys (all optional — sensible defaults used when absent):
+            handle / original_handle : raw target string e.g. "*.example.com"
+            domains                  : list of cleaned domain strings
+            platform                 : "h1", "bc", "it", …
+            offers_bounty            : bool
+            bounty_scopes            : int — number of in-scope bounty-eligible assets
+            crit_scopes              : int — number of critical-severity scopes
+
+        Legacy keys still accepted for backwards-compat:
+            created_at, bounty_range, scope_size, last_found
         """
-        Score a single bounty program.
-        
-        Args:
-            program: Dict with keys:
-                - 'handle': program identifier
-                - 'platform': 'h1', 'bc', 'it', etc
-                - 'created_at': Unix timestamp (seconds)
-                - 'bounty_range': min-max tuple e.g. (100, 5000)
-                - 'scope_size': estimated subdomain count
-                - 'last_found': Unix timestamp of last finding (optional)
-            - current_timestamp: Override current time (for testing)
-        
-        Returns:
-            (total_score, breakdown_dict)
-        """
-        if current_timestamp is None:
-            current_timestamp = time.time()
-        
-        breakdown = {}
-        
-        # 1. RECENCY SCORE (0-100)
-        # Programs < 1 week old: 100 points
-        # Programs < 1 month old: 80 points
-        # Programs < 3 months old: 60 points
-        # Programs > 3 months old: 40 points (decay)
-        created_at = program.get('created_at')
-        if not isinstance(created_at, (int, float)):
-            created_at = current_timestamp
-        days_old = (current_timestamp - created_at) / 86400
-        
-        if days_old < 7:
-            recency_score = 100  # Fresh programs get maximum
-        elif days_old < 30:
-            recency_score = 80
-        elif days_old < 90:
-            recency_score = 60
-        else:
-            recency_score = 40 + max(0, 20 * (1 - (days_old - 90) / 180))  # Gradual decay
-        
-        breakdown['recency'] = {
-            'score': recency_score,
-            'days_old': days_old,
-            'reason': f"Program {days_old:.0f} days old"
-        }
-        
-        # 2. BUDGET SCORE (0-100)
-        # Based on bounty range (min bounty used as proxy)
-        bounty_range = program.get('bounty_range') or (0, 1000)
-        min_bounty = bounty_range[0] if isinstance(bounty_range, (tuple, list)) and len(bounty_range) > 0 else 0
-        if not isinstance(min_bounty, (int, float)):
-            min_bounty = 0
-        
-        if min_bounty >= 5000:
-            budget_score = 100
-            budget_tier = "CRITICAL"
-        elif min_bounty >= 1000:
-            budget_score = 75
-            budget_tier = "HIGH"
-        elif min_bounty >= 100:
-            budget_score = 50
-            budget_tier = "MEDIUM"
-        else:
-            budget_score = 25
-            budget_tier = "LOW"
-        
-        breakdown['budget'] = {
-            'score': budget_score,
-            'min_bounty': min_bounty,
-            'tier': budget_tier
-        }
-        
-        # 3. SCOPE SCORE (0-100)
-        # Larger scope = more attack surface
-        scope_size = program.get('scope_size') or 100
-        
-        if scope_size >= 1000:
-            scope_score = 90
-            scope_tier = "HUGE"
-        elif scope_size >= 100:
-            scope_score = 70
-            scope_tier = "LARGE"
-        elif scope_size >= 10:
-            scope_score = 50
-            scope_tier = "MEDIUM"
-        else:
-            scope_score = 30
-            scope_tier = "SMALL"
-        
-        breakdown['scope'] = {
-            'score': scope_score,
-            'subdomain_count': scope_size,
-            'tier': scope_tier
-        }
-        
-        # 4. FINDING RATE SCORE (0-100)
-        # Historical success rate based on platform + scope
-        platform = program.get('platform', 'h1').lower()
-        scope_key = scope_tier.lower()
-        
-        finding_rate = cls.FINDING_RATES.get((platform, scope_key), 0.10)
-        finding_rate_score = finding_rate * 100  # Convert to 0-100 scale
-        
-        # Boost if we've found something before
-        last_found = program.get('last_found', None)
-        if isinstance(last_found, (int, float)):
-            hours_since_find = (current_timestamp - last_found) / 3600
-            if hours_since_find < 24:  # Found something recently
-                finding_rate_score = min(100, finding_rate_score * 1.5)
-        
-        breakdown['finding_rate'] = {
-            'score': finding_rate_score,
-            'historical_rate': finding_rate,
-            'platform': platform
-        }
-        
-        # TOTAL SCORE (weighted average)
-        total_score = (
-            recency_score * cls.WEIGHTS['recency'] +
-            budget_score * cls.WEIGHTS['budget'] +
-            scope_score * cls.WEIGHTS['scope'] +
-            finding_rate_score * cls.WEIGHTS['finding_rate']
+        breakdown: Dict = {}
+
+        raw_handle = program.get("original_handle") or program.get("handle", "")
+        domains: List[str] = program.get("domains") or []
+        platform = str(program.get("platform", "unknown")).lower()
+
+        # 1. WILDCARD SCORE (0-100)
+        wildcard_score = cls._score_wildcard(raw_handle, domains)
+        breakdown["wildcard"] = {"score": wildcard_score, "handle": raw_handle}
+
+        # 2. BREADTH SCORE (0-100)
+        breadth_score = cls._score_breadth(domains, program)
+        breakdown["breadth"] = {"score": breadth_score, "domain_count": len(domains)}
+
+        # 3. QUALITY SCORE (0-100)
+        quality_score = cls._score_quality(domains, program)
+        breakdown["quality"] = {"score": quality_score}
+
+        # 4. PLATFORM SCORE (0-100)
+        platform_score = _PLATFORM_SCORE.get(platform, _PLATFORM_DEFAULT)
+        breakdown["platform"] = {"score": platform_score, "platform": platform}
+
+        # WEIGHTED TOTAL
+        total = (
+            wildcard_score  * cls.WEIGHTS["wildcard"] +
+            breadth_score   * cls.WEIGHTS["breadth"] +
+            quality_score   * cls.WEIGHTS["quality"] +
+            platform_score  * cls.WEIGHTS["platform"]
         )
-        
-        breakdown['total'] = total_score
-        
-        return total_score, breakdown
-    
+        breakdown["total"] = round(total, 1)
+        return total, breakdown
+
     @classmethod
     def rank_programs(cls, programs: List[Dict], top_n: int = None) -> List[Tuple[str, float, Dict]]:
-        """
-        Rank multiple programs by score.
-        
-        Returns:
-            List of (handle, total_score, breakdown) sorted by score descending
-        """
+        """Rank a list of programs by score (highest first)."""
         scored = []
-        
         for program in programs:
-            handle = program.get('handle', 'unknown')
+            handle = program.get("handle", "unknown")
             score, breakdown = cls.score_program(program)
             scored.append((handle, score, breakdown))
-        
-        # Sort by score descending
         scored.sort(key=lambda x: x[1], reverse=True)
-        
-        if top_n:
-            scored = scored[:top_n]
-        
-        return scored
-    
+        return scored[:top_n] if top_n else scored
+
     @classmethod
     def format_score_report(cls, handle: str, score: float, breakdown: Dict) -> str:
-        """Human-readable score report"""
-        r = breakdown.get('recency', {})
-        b = breakdown.get('budget', {})
-        s = breakdown.get('scope', {})
-        f = breakdown.get('finding_rate', {})
-        
-        return f"""
-Program: {handle} | Total Score: {score:.1f}/100
+        w = breakdown.get("wildcard", {})
+        b = breakdown.get("breadth", {})
+        q = breakdown.get("quality", {})
+        p = breakdown.get("platform", {})
+        return (
+            f"Program: {handle} | Total: {score:.1f}/100\n"
+            f"  Wildcard: {w.get('score',0):.0f}/100  "
+            f"Breadth: {b.get('score',0):.0f}/100 ({b.get('domain_count',0)} domains)  "
+            f"Quality: {q.get('score',0):.0f}/100  "
+            f"Platform: {p.get('score',0):.0f}/100 ({p.get('platform','?')})"
+        )
 
-Recency:      {r.get('score', 0):.0f}/100  ({r.get('reason', 'unknown')})
-Budget:       {b.get('score', 0):.0f}/100  ({b.get('tier', 'unknown')} tier - ${b.get('min_bounty', 0)})
-Scope:        {s.get('score', 0):.0f}/100  ({s.get('tier', 'unknown')} - {s.get('subdomain_count', 0)} subs)
-Finding Rate: {f.get('score', 0):.0f}/100  ({f.get('platform', 'unknown')} platform, {f.get('historical_rate', 0):.1%} historical)
-""".strip()
+    # ── Scoring sub-methods ───────────────────────────────────────────────────
+
+    @classmethod
+    def _score_wildcard(cls, raw_handle: str, domains: List[str]) -> float:
+        """High score when scope is wildcard (*.domain.com).
+
+        Wildcards expose the full subdomain space — they dramatically increase
+        the probability of finding something interesting.
+        """
+        handle_lc = raw_handle.lower()
+        # Full wildcard like *.example.com
+        if handle_lc.startswith("*.") or " *." in handle_lc:
+            return 100.0
+        # Multiple wildcards in a comma-joined scope string
+        wildcard_count = handle_lc.count("*")
+        if wildcard_count >= 3:
+            return 90.0
+        if wildcard_count == 2:
+            return 80.0
+        if wildcard_count == 1:
+            return 70.0
+        # No wildcard but multiple domains suggest wide scope
+        if len(domains) >= 5:
+            return 55.0
+        if len(domains) >= 2:
+            return 45.0
+        return 30.0
+
+    @classmethod
+    def _score_breadth(cls, domains: List[str], program: Dict) -> float:
+        """More domains = more attack surface, but with diminishing returns.
+
+        Uses scope metadata from H1 API when available (bounty_scopes / crit_scopes).
+        Falls back to legacy scope_size field or domain list length.
+        """
+        # Prefer API-provided metadata
+        bounty_scopes = program.get("bounty_scopes", 0) or 0
+        crit_scopes   = program.get("crit_scopes", 0) or 0
+        scope_size    = program.get("scope_size") or len(domains) or 1
+
+        # Boost for critical-severity scopes
+        crit_bonus = min(20, crit_scopes * 4)
+
+        if scope_size >= 500 or bounty_scopes >= 50:
+            base = 90
+        elif scope_size >= 100 or bounty_scopes >= 20:
+            base = 75
+        elif scope_size >= 20 or bounty_scopes >= 5:
+            base = 55
+        elif scope_size >= 5:
+            base = 40
+        else:
+            base = 25
+
+        return min(100, base + crit_bonus)
+
+    @classmethod
+    def _score_quality(cls, domains: List[str], program: Dict) -> float:
+        """Estimate target quality from TLD patterns and bounty metadata."""
+        offers_bounty = program.get("offers_bounty", True)
+        bounty_range  = program.get("bounty_range")
+
+        # Programs that don't pay bounties are low priority
+        if offers_bounty is False:
+            return 20.0
+
+        # Use explicit bounty range if provided (legacy / H1 API data)
+        if isinstance(bounty_range, (list, tuple)) and len(bounty_range) >= 1:
+            try:
+                min_b = float(bounty_range[0]) if bounty_range[0] else 0
+                if min_b >= 5000:   return 100.0
+                if min_b >= 1000:   return 85.0
+                if min_b >= 500:    return 70.0
+                if min_b >= 100:    return 55.0
+            except (TypeError, ValueError):
+                pass
+
+        # Infer from TLD signals
+        all_domains = " ".join(domains).lower()
+        tld_score = _PLATFORM_DEFAULT  # neutral baseline
+
+        for tld in _HIGH_VALUE_TLDS:
+            if tld in all_domains:
+                tld_score = max(tld_score, 80)
+                break
+        for tld in _MID_VALUE_TLDS:
+            if tld in all_domains:
+                tld_score = max(tld_score, 65)
+                break
+        for tld in _LOW_VALUE_TLDS:
+            if tld in all_domains:
+                tld_score = min(tld_score, 40)
+
+        # Fintech / security company names in domain → higher value
+        high_value_patterns = re.compile(
+            r"(pay|bank|finance|capital|crypto|wallet|vault|auth|sso|"
+            r"api|admin|dashboard|portal|internal|corp|sec|scan|bug)", re.I
+        )
+        if any(high_value_patterns.search(d) for d in domains):
+            tld_score = min(100, tld_score + 10)
+
+        return float(tld_score)
 
 
-# Example usage
+# ── Backwards-compat aliases ──────────────────────────────────────────────────
+class BountyRange:
+    CRITICAL = 4; HIGH = 3; MEDIUM = 2; LOW = 1
+
+class ProgramScope:
+    HUGE = 4; LARGE = 3; MEDIUM = 2; SMALL = 1
+
+class BountyPlatform:
+    HACKERONE = "h1"; BUGCROWD = "bc"; INTIGRITI = "it"
+    YESWEHACK = "ywh"; HACKFARM = "hf"
+
+
+# Example / manual test
 if __name__ == "__main__":
-    # Test scoring
-    now = time.time()
-    
+    import time as _time
+    _now = _time.time()
     programs = [
-        {
-            'handle': 'acme_new',
-            'platform': 'h1',
-            'created_at': now - 86400 * 2,  # 2 days old (FRESH)
-            'bounty_range': (500, 5000),
-            'scope_size': 250,
-        },
-        {
-            'handle': 'oldcorp_established',
-            'platform': 'bc',
-            'created_at': now - 86400 * 180,  # 6 months old
-            'bounty_range': (100, 1000),
-            'scope_size': 50,
-        },
-        {
-            'handle': 'megacompany_huge',
-            'platform': 'h1',
-            'created_at': now - 86400 * 30,  # 1 month old
-            'bounty_range': (1000, 10000),
-            'scope_size': 2000,
-        },
+        {"handle": "wildcard_fintech", "original_handle": "*.payments.io",
+         "domains": ["payments.io"], "platform": "h1", "offers_bounty": True},
+        {"handle": "multi_domain_corp", "original_handle": "bigcorp.com",
+         "domains": ["bigcorp.com", "api.bigcorp.com", "auth.bigcorp.com",
+                     "admin.bigcorp.com", "dev.bigcorp.com", "pay.bigcorp.com"],
+         "platform": "h1", "bounty_scopes": 30, "crit_scopes": 5},
+        {"handle": "tiny_site_xyz", "original_handle": "tinysite.xyz",
+         "domains": ["tinysite.xyz"], "platform": "bc", "offers_bounty": True},
+        {"handle": "old_gov", "original_handle": "agency.gov",
+         "domains": ["agency.gov"], "platform": "unknown", "offers_bounty": False},
     ]
-    
     ranked = BountyScorer.rank_programs(programs)
-    
-    print("📊 BOUNTY PROGRAM RANKING\n" + "=" * 70)
-    for i, (handle, score, breakdown) in enumerate(ranked, 1):
-        print(f"\n{i}. {BountyScorer.format_score_report(handle, score, breakdown)}")
+    print("📊 BOUNTY RANKING\n" + "=" * 70)
+    for i, (handle, score, bd) in enumerate(ranked, 1):
+        print(f"\n{i}. {BountyScorer.format_score_report(handle, score, bd)}")

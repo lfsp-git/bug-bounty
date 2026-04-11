@@ -1,5 +1,6 @@
 import os, subprocess, shlex, re, io, shutil, sys, threading, json
 import logging
+from typing import List
 from core.ui import ui_log, Colors
 from core.config import get_tool_timeout, NUCLEI_RATE_LIMIT, NUCLEI_CONCURRENCY  # Centralized config
 from recon.tool_discovery import find_tool
@@ -86,9 +87,61 @@ def run_dnsx(input_file, output_file, rate_limit=100):
     # Note: no -resp flag — keeps output as plain hostnames so HTTPX can consume it directly
     run_cmd([find_tool("dnsx"), "-l", input_file, "-o", output_file, "-wd", "-silent", "-a", f"-rate-limit={rate_limit}"], "DNSX", output_file)
 
+def _sync_uncover_providers() -> List[str]:
+    """Sync .env API keys into uncover provider-config.yaml.
+
+    Returns the list of enabled provider names so run_uncover can pass -e flags.
+    Censys is skipped when CENSYS_API_ID looks like a placeholder (not a UUID / email).
+    """
+    import re as _re
+    cfg_path = os.path.expanduser("~/.config/uncover/provider-config.yaml")
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+
+    shodan_key  = os.getenv("SHODAN_API_KEY", "").strip()
+    chaos_key   = os.getenv("CHAOS_KEY", "").strip()
+    censys_id   = os.getenv("CENSYS_API_ID", "").strip()
+    censys_sec  = os.getenv("CENSYS_API_SECRET", "").strip()
+
+    # Censys API_ID must be a UUID (hex-and-dashes) or email — reject obvious placeholders
+    _uuid_or_email = _re.compile(r'^[0-9a-f\-]{32,36}$|^[^@]+@[^@]+\.[a-z]{2,}$', _re.I)
+    censys_valid = bool(censys_id and censys_sec and _uuid_or_email.match(censys_id))
+
+    lines = []
+    enabled = []
+    if shodan_key:
+        lines.append(f"shodan:\n  - {shodan_key}")
+        enabled.append("shodan")
+    if censys_valid:
+        lines.append(f"censys:\n  - {censys_id}:{censys_sec}")
+        enabled.append("censys")
+    else:
+        if censys_id:
+            logging.warning(
+                f"Censys CENSYS_API_ID='{censys_id}' does not look like a valid UUID/email. "
+                "Censys disabled — update .env with your real credentials."
+            )
+
+    if lines:
+        try:
+            with open(cfg_path, "w") as f:
+                f.write("\n".join(lines) + "\n")
+        except OSError as e:
+            logging.warning(f"Could not write uncover provider config: {e}")
+
+    return enabled
+
 def run_uncover(domains, output_file):
-    if not domains: return
-    run_cmd([find_tool("uncover"), "-q", ",".join(domains), "-o", output_file, "-silent"], "Uncover", output_file)
+    if not domains:
+        return
+    providers = _sync_uncover_providers()
+    if not providers:
+        logging.warning("run_uncover: no valid API keys configured (Shodan/Censys). Skipping.")
+        open(output_file, "w").close()
+        return
+    cmd = [find_tool("uncover"), "-q", ",".join(domains),
+           "-o", output_file, "-silent",
+           "-e", ",".join(providers)]
+    run_cmd(cmd, "Uncover", output_file)
 
 def run_httpx(input_file, output_file, rate_limit=100):
     # -random-agent is default true; -ua is not a valid flag (caused 0-second silent exit)

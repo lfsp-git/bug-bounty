@@ -2,6 +2,27 @@
 """HUNT3R v1.0-EXCALIBUR — Autonomous Bug Bounty Hunter"""
 import sys
 import os
+
+# ── Venv enforcement ──────────────────────────────────────────────────────────
+# If not already inside a virtual environment, re-exec with .venv/bin/python3
+# so that all ML dependencies (pandas, numpy, lightgbm…) are always available.
+def _ensure_venv() -> None:
+    if sys.prefix != sys.base_prefix:
+        return  # already inside a venv — nothing to do
+    _root = os.path.dirname(os.path.abspath(__file__))
+    _venv_py = os.path.join(_root, ".venv", "bin", "python3")
+    if os.path.isfile(_venv_py):
+        os.execv(_venv_py, [_venv_py] + sys.argv)
+    # .venv missing — warn clearly and continue (don't break non-venv installs)
+    print(
+        "\033[33m[WARN] Rodando fora do venv e .venv não encontrado.\n"
+        "       Crie o ambiente: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt\033[0m",
+        file=sys.stderr,
+    )
+
+_ensure_venv()
+# ─────────────────────────────────────────────────────────────────────────────
+
 import argparse
 import glob
 import json
