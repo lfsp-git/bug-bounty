@@ -208,7 +208,15 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Preview targets without executing tools")
     parser.add_argument("--resume", type=str, metavar="MISSION_ID", help="Resume from checkpoint")
     parser.add_argument("--export", type=str, choices=["csv", "xlsx", "xml"], help="Export all findings")
+    parser.add_argument("--clean", action="store_true", help="Purge caches, update tools/deps, run tests")
     args = parser.parse_args()
+
+    if args.clean:
+        ui_clear()
+        ui_banner()
+        from core.cleaner import run_clean
+        run_clean()
+        return
 
     if args.watchdog:
         ui_clear()
