@@ -137,6 +137,20 @@ def run_nuclei(
         open(output_file, 'w').close()
         return
 
+    # Verify nuclei templates exist; if not, auto-download and skip this run if still missing.
+    templates_dir = os.path.expanduser("~/nuclei-templates")
+    if not os.path.isdir(templates_dir):
+        ui_log("ENGINE_WARN", "Nuclei templates not found. Downloading via 'nuclei -update-templates'...", Colors.WARNING)
+        try:
+            subprocess.run([exe, "-update-templates"], timeout=300, capture_output=True)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            logging.warning(f"Nuclei template download failed: {e}")
+        if not os.path.isdir(templates_dir):
+            ui_log("ENGINE_WARN", "Nuclei templates still missing after update. Skipping scan.", Colors.WARNING)
+            open(output_file, 'w').close()
+            return
+        ui_log("ENGINE_WARN", "Nuclei templates downloaded. Proceeding.", Colors.SUCCESS)
+
     # Truncate output file
     open(output_file, 'w').close()
 

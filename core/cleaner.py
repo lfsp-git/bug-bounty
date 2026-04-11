@@ -128,6 +128,17 @@ def _update_deps():
     )
     if result.returncode == 0:
         _step("DEPS", "requirements.txt instalado/atualizado.", Colors.SUCCESS)
+    elif "externally-managed-environment" in result.stderr:
+        # PEP 668: retry with --break-system-packages for non-venv system Python
+        result2 = subprocess.run(
+            [pip, "install", "-r", "requirements.txt", "--quiet", "--upgrade",
+             "--break-system-packages"],
+            capture_output=True, text=True
+        )
+        if result2.returncode == 0:
+            _step("DEPS", "requirements.txt instalado/atualizado.", Colors.SUCCESS)
+        else:
+            _step("DEPS", f"Pip falhou: {result2.stderr.strip()[:120]}", Colors.WARNING)
     else:
         _step("DEPS", f"Pip falhou: {result.stderr.strip()[:120]}", Colors.WARNING)
 
