@@ -67,6 +67,7 @@ ACTIVITY_LOG_FILE = "activity.log"
 _activity_file_lock = threading.Lock()
 _cleanup_lock = threading.Lock()
 _cleanup_done = False
+_interrupt_event = threading.Event()
 
 ANSI_ESCAPE_RE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
@@ -733,9 +734,11 @@ atexit.register(_terminal_cleanup)
 
 def _sigint_handler(signum, frame):
     _render_stop.set()
-    if sys.is_finalizing():
-        return
-    raise KeyboardInterrupt
+    _interrupt_event.set()
+
+
+def ui_interrupt_requested() -> bool:
+    return _interrupt_event.is_set()
 
 def _sigwinch_handler(signum, frame):
     pass  # Rich Live handles resize internally

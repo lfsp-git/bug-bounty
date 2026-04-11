@@ -489,6 +489,20 @@ class TestScannerResultsSnapshot(unittest.TestCase):
         self.assertEqual(res["js_secrets"], 3)
         self.assertEqual(res["vulns"], 2)
 
+    def test_cache_valid_disabled_runtime_flag(self):
+        import tempfile
+        from core import scanner as scanner_mod
+
+        with tempfile.NamedTemporaryFile("w", delete=False) as tf:
+            tf.write("x\n")
+            path = tf.name
+        try:
+            scanner_mod._DISABLE_RUNTIME_CACHE = True
+            self.assertFalse(scanner_mod._is_cache_valid(path))
+        finally:
+            scanner_mod._DISABLE_RUNTIME_CACHE = False
+            os.unlink(path)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
@@ -609,10 +623,11 @@ class TestWatchdogUI(unittest.TestCase):
                 self.assertIn("[W1] Nuclei", content)
             ui_mod._WATCHDOG_MODE = prev_watchdog
 
-    def test_sigint_handler_raises_keyboardinterrupt(self):
+    def test_sigint_handler_sets_interrupt_flag(self):
         from core import ui as ui_mod
-        with self.assertRaises(KeyboardInterrupt):
-            ui_mod._sigint_handler(None, None)
+        ui_mod._interrupt_event.clear()
+        ui_mod._sigint_handler(None, None)
+        self.assertTrue(ui_mod.ui_interrupt_requested())
 
     def test_watchdog_ui_update_status_skips_spinner_frames(self):
         from core import ui as ui_mod

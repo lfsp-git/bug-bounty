@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.ui import (
     ui_log, Colors, ui_enable_watchdog_mode, ui_set_mission_meta,
     ui_worker_register, ui_worker_done, ui_snapshot, ui_cycle_started,
-    set_worker_context, _WORKER_SLOTS,
+    set_worker_context, _WORKER_SLOTS, ui_interrupt_requested,
 )
 from core.intel import AIClient, IntelMiner, score_watchdog_target
 
@@ -252,6 +252,8 @@ def _scan_target_parallel_wrapper(args):
     set_worker_context(worker_id)
 
     try:
+        if ui_interrupt_requested():
+            return {'success': False, 'handle': handle, 'reason': 'interrupted'}
         if _should_process_target(handle):
             ui_worker_register(worker_id, target['original_handle'], idx, total)
             results = _scan_target(orch, target)
@@ -295,13 +297,14 @@ def _compute_next_sleep_seconds(cycle_metrics: dict) -> int:
     return random.randint(SLEEP_MIN, SLEEP_MAX)
 
 def run_watchdog():
-    from core.runner import set_record_tool_times
+    from core.runner import set_record_tool_times, set_runtime_cache_enabled
     set_record_tool_times(False)
+    set_runtime_cache_enabled(False)
 
     ui_enable_watchdog_mode()
     ui_log("WATCHDOG", f"Modo WATCHDOG PREDADOR ativo. {MAX_PARALLEL_WORKERS} workers paralelos.", Colors.SUCCESS)
 
-    while True:
+    while not ui_interrupt_requested():
         ui_cycle_started()
         ts = datetime.now().strftime('%H:%M')
         ui_log("WATCHDOG", f"=== CICLO {ts} ===", Colors.BOLD)
@@ -324,6 +327,10 @@ def run_watchdog():
                 futures = [executor.submit(_scan_target_parallel_wrapper, t) for t in tasks]
                 try:
                     for future in as_completed(futures):
+                        if ui_interrupt_requested():
+                            ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            return
                         result = future.result()
                         if result.get('success'):
                             w = result.get('worker', '?')
@@ -339,7 +346,7 @@ def run_watchdog():
                                 cycle_metrics["errors"] += 1
                 except KeyboardInterrupt:
                     ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
-                    executor.shutdown(wait=False)
+                    executor.shutdown(wait=False, cancel_futures=True)
                     return
             if cycle_metrics["targets"] > 0:
                 avg_recon = cycle_metrics["phase_seconds"]["recon"] / cycle_metrics["targets"]
@@ -356,11 +363,11 @@ def run_watchdog():
         secs = _compute_next_sleep_seconds(cycle_metrics)
         wake = (datetime.now() + timedelta(seconds=secs)).strftime('%H:%M')
         ui_log("WATCHDOG", f"Dormindo ate {wake} ({secs//3600}h{(secs%3600)//60}m)", Colors.DIM)
-        try:
-            time.sleep(secs)
-        except KeyboardInterrupt:
-            ui_log("WATCHDOG", "Interrupcao durante sleep. Encerrando...", Colors.WARNING)
-            return
+        for _ in range(secs):
+            if ui_interrupt_requested():
+                ui_log("WATCHDOG", "Interrupcao durante sleep. Encerrando...", Colors.WARNING)
+                return
+            time.sleep(1)
 
 if __name__ == "__main__":
     try:

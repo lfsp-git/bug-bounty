@@ -244,9 +244,12 @@ def _count_findings(filepath):
         return 0
 
 _CACHE_TTL = 3600  # 1 hour
+_DISABLE_RUNTIME_CACHE = False
 
 def _is_cache_valid(filepath: str) -> bool:
     """Return True if filepath exists, is non-empty, and was modified within _CACHE_TTL seconds."""
+    if _DISABLE_RUNTIME_CACHE:
+        return False
     try:
         if not os.path.exists(filepath): return False
         if os.path.getsize(filepath) == 0: return False
