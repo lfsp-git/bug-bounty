@@ -7,6 +7,7 @@ Discord (Monitoramento): Medium, Low, Info, Recon logs
 import os
 import json
 import logging
+import hashlib
 import requests
 from datetime import datetime, timezone
 from core.ui import ui_log, Colors
@@ -96,21 +97,40 @@ def _save_dedup_cache(cache: dict) -> None:
         logging.debug(f"Notifier dedup cache save failed: {e}")
 
 
-def _is_duplicate_and_record(key: str) -> bool:
-    now = int(_utc_now().timestamp())
-    cache = _load_dedup_cache()
-    # prune expired entries
-    fresh = {
+def _prune_dedup_cache(cache: dict, now: int) -> dict:
+    return {
         k: ts for k, ts in cache.items()
         if isinstance(ts, int) and (now - ts) < NOTIFY_DEDUP_TTL_SECONDS
     }
-    last_ts = fresh.get(key)
-    if isinstance(last_ts, int) and (now - last_ts) < NOTIFY_DEDUP_TTL_SECONDS:
+
+
+def _canonical_text(value, max_len: int = 240) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).strip().lower().split())[:max_len]
+
+
+def _hashed_dedup_key(prefix: str, *parts) -> str:
+    canonical = "|".join(_canonical_text(p) for p in parts if _canonical_text(p))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+    return f"{prefix}:{digest}"
+
+
+def _is_duplicate_and_record_keys(keys: list[str]) -> bool:
+    now = int(_utc_now().timestamp())
+    cache = _load_dedup_cache()
+    fresh = _prune_dedup_cache(cache, now)
+    if any(isinstance(fresh.get(k), int) and (now - fresh[k]) < NOTIFY_DEDUP_TTL_SECONDS for k in keys):
         _save_dedup_cache(fresh)
         return True
-    fresh[key] = now
+    for key in keys:
+        fresh[key] = now
     _save_dedup_cache(fresh)
     return False
+
+
+def _is_duplicate_and_record(key: str) -> bool:
+    return _is_duplicate_and_record_keys([key])
 
 
 def _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep=False):
@@ -171,8 +191,9 @@ class NotificationDispatcher:
             is_deep = d.get("_deep_scan", False)
 
             if sev in ("CRITICAL", "HIGH"):
-                dedup_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                if _is_duplicate_and_record(dedup_key):
+                legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
+                dedup_key = _hashed_dedup_key("tg:nuclei", target, sev, tid, matched, cve)
+                if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
                     continue
                 html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                 _tg_post(tg[0], tg[1], html)
@@ -186,13 +207,15 @@ class NotificationDispatcher:
                     f"Simulated severity: {sim_sev}\n"
                     f"Report:\n<pre>{_tg_escape(report)}</pre>\n"
                 )
-                dedup_key = f"tg:escalated:{target}:{escalated}:{tid}"
-                if _is_duplicate_and_record(dedup_key):
+                legacy_key = f"tg:escalated:{target}:{escalated}:{tid}"
+                dedup_key = _hashed_dedup_key("tg:escalated", target, escalated, tid, sim_sev)
+                if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
                     continue
                 _tg_post(tg[0], tg[1], html)
             elif sev == "MEDIUM":
-                dedup_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                if _is_duplicate_and_record(dedup_key):
+                legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
+                dedup_key = _hashed_dedup_key("tg:nuclei", target, sev, tid, matched, cve)
+                if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
                     continue
                 html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                 _tg_post(tg[0], tg[1], html)
@@ -259,8 +282,9 @@ class NotificationDispatcher:
 
                     # Telegram: Critical + High + Medium
                     if sev in ("CRITICAL", "HIGH", "MEDIUM") and tg:
-                        dedup_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                        if _is_duplicate_and_record(dedup_key):
+                        legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
+                        dedup_key = _hashed_dedup_key("tg:nuclei", target, sev, tid, matched, cve)
+                        if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
                             continue
                         html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
                         _tg_post(tg[0], tg[1], html)
@@ -308,14 +332,16 @@ class NotificationDispatcher:
                             f"Source: <code>{_tg_escape(source[:80])}</code>\n"
                             f"Value: <code>{_tg_escape(val)}</code>\n"
                         )
-                        dedup_key = f"tg:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
-                        if _is_duplicate_and_record(dedup_key):
+                        legacy_key = f"tg:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
+                        dedup_key = _hashed_dedup_key("tg:js", target, severity, stype, source, val)
+                        if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
                             continue
                         _tg_post(tg[0], tg[1], html)
                         tg_count += 1
                     elif dc:
-                        dedup_key = f"dc:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
-                        if _is_duplicate_and_record(dedup_key):
+                        legacy_key = f"dc:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
+                        dedup_key = _hashed_dedup_key("dc:js", target, severity, stype, source, val)
+                        if _is_duplicate_and_record_keys([dedup_key, legacy_key]):
                             continue
                         embed = {
                             "title": f"[JS Secret] {target}",

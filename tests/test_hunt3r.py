@@ -349,6 +349,32 @@ class TestNotifier(unittest.TestCase):
                 self.assertFalse(notifier_mod._is_duplicate_and_record("k1"))
                 self.assertTrue(notifier_mod._is_duplicate_and_record("k1"))
 
+    def test_notifier_canonical_hash_dedup(self):
+        from core import notifier as notifier_mod
+
+        with tempfile.TemporaryDirectory() as td:
+            cache_path = os.path.join(td, "dedup.json")
+            with patch.object(notifier_mod, "NOTIFY_DEDUP_CACHE_FILE", cache_path):
+                k1 = notifier_mod._hashed_dedup_key(
+                    "tg:nuclei",
+                    "TARGET",
+                    "HIGH",
+                    "CVE-2024-1234",
+                    "https://example.com/path?x=1",
+                    "N/A",
+                )
+                k2 = notifier_mod._hashed_dedup_key(
+                    "tg:nuclei",
+                    " target ",
+                    "high",
+                    "cve-2024-1234",
+                    "https://example.com/path?x=1   ",
+                    "n/a",
+                )
+                self.assertEqual(k1, k2)
+                self.assertFalse(notifier_mod._is_duplicate_and_record_keys([k1]))
+                self.assertTrue(notifier_mod._is_duplicate_and_record_keys([k2]))
+
 
 # ---------------------------------------------------------------------------
 # core/reporter.py
