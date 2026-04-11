@@ -18,7 +18,7 @@ from core.updater import ToolUpdater
 from core.config import AUTO_UPDATE_ON_START
 from recon.platforms import PlatformManager, load_custom_targets
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.ERROR)  # no-op: overridden by core.logger.setup_logging()
 logger = logging.getLogger(__name__)
 
 

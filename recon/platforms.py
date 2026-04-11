@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 # Camada de Apresentação desacoplada
 from core.ui import ui_log, Colors, sanitize_input
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.ERROR)  # no-op: overridden by core.logger.setup_logging()
 logger = logging.getLogger(__name__)
 
 

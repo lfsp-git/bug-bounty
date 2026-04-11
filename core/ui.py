@@ -57,12 +57,8 @@ class Colors:
     RESET     = "\033[0m"
 
 os.makedirs('logs', exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(message)s',
-    datefmt='%H:%M:%S',
-    handlers=[logging.FileHandler('logs/hunt3r.log', encoding='utf-8')]
-)
+from core.logger import setup_logging
+setup_logging()
 ACTIVITY_LOG_FILE = "activity.log"
 _activity_file_lock = threading.Lock()
 _cleanup_lock = threading.Lock()

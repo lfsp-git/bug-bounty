@@ -2,7 +2,7 @@ import json, re, os, logging
 from core.ui import ui_log, Colors
 from core.ml_filter import MLFilter
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.ERROR)  # no-op: overridden by core.logger.setup_logging()
 logger = logging.getLogger(__name__)
 
 class FalsePositiveKiller:

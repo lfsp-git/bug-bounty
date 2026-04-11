@@ -4,7 +4,7 @@ from typing import Dict
 from core.ui import ui_log, Colors, _buffer_append
 from recon.tools import find_tool
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.ERROR)  # no-op: overridden by core.logger.setup_logging()
 logger = logging.getLogger(__name__)
 
 class ToolUpdater:

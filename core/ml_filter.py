@@ -12,7 +12,7 @@ import json
 import logging
 from pathlib import Path
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.ERROR)  # no-op: overridden by core.logger.setup_logging()
 logger = logging.getLogger(__name__)
 
 class MLFilter:
