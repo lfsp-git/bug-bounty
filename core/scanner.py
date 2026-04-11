@@ -18,6 +18,7 @@ from core.ui import (
 from recon.tools import (
     run_subfinder, run_dnsx, run_uncover, run_nuclei, 
     run_httpx, run_katana_surgical, run_js_hunter, 
+    run_naabu, run_urlfinder,
     apply_sniper_filter
 )
 
@@ -332,15 +333,32 @@ class MissionRunner:
 
         if is_ip_mode:
             # IP/CIDR targets: skip Subfinder/DNSX/Uncover entirely.
-            # IPs are already expanded in 'domains'; write them directly to live_file.
+            # Run naabu to discover all open web ports before HTTPX.
             sub_file = paths["sub"]
             live_file = paths["live"]
             unv_file = paths["unv"]
             import shutil
             shutil.copy(dom_file, sub_file)
-            shutil.copy(dom_file, live_file)
             open(unv_file, 'w').close()
             ui_log("RECON", f"Modo IP: pulando Subfinder/DNSX/Uncover ({count_lines(dom_file)} IPs)", Colors.INFO)
+
+            # Naabu: port-scan IPs to discover all open web ports
+            naabu_file = paths["sub"] + ".naabu"
+            if _is_cache_valid(naabu_file):
+                ui_log("Naabu", f"[Cache] {_count_lines(naabu_file)} ports", Colors.DIM)
+                _tool_cached("Naabu", "ports", naabu_file)
+                shutil.copy(naabu_file, live_file)
+            else:
+                limiter.wait_and_record(self.target.get('handle', 'unknown'))
+                _tool_start("Naabu", input_count=count_lines(dom_file))
+                ok = _run_with_progress("Naabu", lambda: run_naabu(dom_file, naabu_file))
+                if ok and _count_lines(naabu_file) > 0:
+                    _tool_done("Naabu", "ports", naabu_file)
+                    shutil.copy(naabu_file, live_file)
+                else:
+                    _tool_error("Naabu")
+                    # Fallback: raw IPs are still valid HTTPX input on port 80
+                    shutil.copy(dom_file, live_file)
         else:
             sub_file = paths["sub"]
             live_file = paths["live"]
@@ -435,6 +453,7 @@ class MissionRunner:
             "domains": count_lines(dom_file),
             "subdomains": count_lines(sub_file),
             "alive": count_lines(live_file),
+            "open_ports": _count_lines(paths["sub"] + ".naabu") if is_ip_mode else 0,
             "takeovers": count_lines(uncover_file),
             "httpx_urls": count_lines(httpx_file),
             "unresolved": count_lines(unv_file),
@@ -462,6 +481,7 @@ class MissionRunner:
             phase_result["counts"] = {
                 "inputs": 0,
                 "katana_urls": 0,
+                "hist_urls": 0,
                 "js_secrets": 0,
                 "findings": 0,
                 "_started_at": phase_started,
@@ -470,6 +490,8 @@ class MissionRunner:
             phase_result["paths"] = {
                 "input": live_file,
                 "katana": paths["live"] + ".katana",
+                "urlfinder": paths["live"] + ".urlfinder",
+                "combined_urls": paths["live"] + ".combined_urls",
                 "js_secrets": paths["live"] + ".js_secrets",
                 "findings": paths["fin"],
             }
@@ -497,6 +519,48 @@ class MissionRunner:
                 _tool_error("Katana")
                 phase_result["ok"] = False
                 phase_result["errors"].append("Katana failed")
+
+        # URLFinder: historical/archived URLs to expand attack surface
+        # Extracts orphaned endpoints, old API versions, forgotten paths from public archives.
+        urlfinder_file = paths["live"] + ".urlfinder"
+        dom_file = paths.get("dom", paths["live"].replace("live.txt", "dom.txt"))
+        if _is_cache_valid(urlfinder_file):
+            ui_log("URLFinder", f"[Cache] {_count_lines(urlfinder_file)} hist URLs", Colors.DIM)
+            _tool_cached("URLFinder", "hist_urls", urlfinder_file)
+        elif os.path.exists(dom_file) and os.path.getsize(dom_file) > 0:
+            limiter.wait_and_record(self.target.get('handle', 'unknown'))
+            _tool_start("URLFinder", input_count=count_lines(dom_file))
+            ok = _run_with_progress("URLFinder", lambda: run_urlfinder(dom_file, urlfinder_file))
+            if ok:
+                _tool_done("URLFinder", "hist_urls", urlfinder_file)
+            else:
+                _tool_error("URLFinder")
+                # Non-fatal: proceed without historical URLs
+        else:
+            open(urlfinder_file, 'w').close()
+
+        # Merge katana + urlfinder into combined URL list (deduped) for broader nuclei coverage
+        nuclei_input = recon_input
+        combined_file = paths["live"] + ".combined_urls"
+        try:
+            seen_urls: set = set()
+            combined_lines = []
+            for src in [recon_input, katana_file, urlfinder_file]:
+                if os.path.exists(src):
+                    with open(src, 'r', encoding='utf-8', errors='ignore') as _cf:
+                        for _line in _cf:
+                            url = _line.strip()
+                            if url and url not in seen_urls:
+                                seen_urls.add(url)
+                                combined_lines.append(url)
+            if combined_lines:
+                with open(combined_file, 'w', encoding='utf-8') as _wf:
+                    _wf.write('\n'.join(combined_lines) + '\n')
+                nuclei_input = combined_file
+                ui_log("MERGE", f"{len(combined_lines)} unique URLs para nuclei", Colors.DIM)
+        except OSError as _e:
+            logging.warning(f"URL merge failed: {_e}; falling back to recon_input")
+            nuclei_input = recon_input
         
         # JS Hunter: extrai segredos de arquivos JavaScript
         js_secrets_file = paths["live"] + ".js_secrets"
@@ -521,10 +585,10 @@ class MissionRunner:
         # Smart Nuclei Tag Detection: Extract tech from Katana/HTTPX and select appropriate tags
         nuclei_tags = self._get_smart_nuclei_tags(recon_input, katana_file)
         
-        # Nuclei: scanning de vulnerabilidades com URLs do HTTPX
+        # Nuclei: scanning de vulnerabilidades com URLs combinadas (HTTPX + Katana + URLFinder)
         findings_file = paths["fin"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        live_inputs = count_lines(recon_input)
+        live_inputs = count_lines(nuclei_input)
         timeout_override = None
         if live_inputs >= _NUCLEI_TIMEOUT_LIVE_HOST_THRESHOLD:
             timeout_override = _NUCLEI_TIMEOUT_LARGE_SCAN
@@ -535,7 +599,7 @@ class MissionRunner:
             )
         _tool_start("Nuclei", input_count=live_inputs)
         ok = _run_with_progress("Nuclei", lambda: run_nuclei(
-            recon_input, findings_file, tags=nuclei_tags,
+            nuclei_input, findings_file, tags=nuclei_tags,
             rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback,
             custom_templates=self.custom_template_paths, timeout_override=timeout_override),
             extra_stats_fn=_nuclei_extra_stats)
@@ -552,6 +616,7 @@ class MissionRunner:
         phase_result["counts"] = {
             "inputs": count_lines(recon_input),
             "katana_urls": count_lines(katana_file),
+            "hist_urls": _count_lines(urlfinder_file),
             "js_secrets": count_lines(js_secrets_file),
             "findings": _count_findings(findings_file),
             "_started_at": phase_started,
@@ -560,6 +625,8 @@ class MissionRunner:
         phase_result["paths"] = {
             "input": recon_input,
             "katana": katana_file,
+            "urlfinder": urlfinder_file,
+            "combined_urls": combined_file,
             "js_secrets": js_secrets_file,
             "findings": findings_file,
         }

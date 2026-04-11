@@ -189,6 +189,7 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
 
     Timeout adaptativo: 300s para ≤30 URLs, +6s por URL adicional,
     máx 900s — evita timeout em alvos grandes sem travar para sempre.
+    -js-crawl: extrai endpoints embutidos em JS (Angular/React SPAs).
     """
     endpoint_count = 0
     if os.path.exists(input_file):
@@ -203,9 +204,46 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
     adaptive_timeout = min(base_timeout + per_url_extra, 900)
 
     cmd = [find_tool("katana"), "-list", input_file, "-o", output_file, "-silent",
-           f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2",
-           "-crawl-duration", str(adaptive_timeout)]
+           f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "3",
+           "-js-crawl", "-crawl-duration", str(adaptive_timeout)]
     run_cmd(cmd, "Katana", output_file)
+
+
+# Curated web ports for bug bounty — covers common app servers, APIs, dev ports
+_NAABU_WEB_PORTS = (
+    "80,443,8080,8443,3000,3001,4000,4200,4443,"
+    "5000,5001,5443,7070,7443,8000,8001,8008,8081,"
+    "8082,8088,8090,8181,8888,8889,9000,9001,9090,"
+    "9200,9443,10000"
+)
+
+def run_naabu(input_file, output_file, rate=1000):
+    """Port-scan IP/CIDR targets for open web ports.
+
+    Uses a curated port list covering the most common web-app ports.
+    -exclude-cdn avoids wasting time on CDN IPs.
+    """
+    run_cmd(
+        [find_tool("naabu"), "-list", input_file, "-o", output_file,
+         "-silent", "-rate", str(rate), "-p", _NAABU_WEB_PORTS, "-exclude-cdn"],
+        "Naabu", output_file
+    )
+
+
+def run_urlfinder(domain_list_file, output_file):
+    """Discover historical/archived URLs via public sources (Wayback, AlienVault, etc.).
+
+    Expands attack surface by finding orphaned endpoints, old API versions,
+    and forgotten paths not reachable from the current homepage.
+    -ns: no-scope (include out-of-scope URLs for comprehensive discovery).
+    """
+    if not os.path.exists(domain_list_file) or os.path.getsize(domain_list_file) == 0:
+        open(output_file, 'w').close()
+        return
+    run_cmd(
+        [find_tool("urlfinder"), "-list", domain_list_file, "-o", output_file, "-silent"],
+        "URLFinder", output_file
+    )
 
 def run_nuclei(
     input_file,

@@ -8,8 +8,10 @@ from recon.engines import (
     run_httpx,
     run_js_hunter,
     run_katana_surgical,
+    run_naabu,
     run_nuclei,
     run_subfinder,
     run_uncover,
+    run_urlfinder,
 )
 
