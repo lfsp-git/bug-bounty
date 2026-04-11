@@ -10,7 +10,6 @@ import random
 import logging
 import shutil
 import subprocess
-import shlex
 import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -92,11 +91,10 @@ def _fetch_global_wildcards():
             return _process_raw_to_targets(raw_list)
 
     ui_log("WATCHDOG", "Cache expirado. Sincronizando com APIs em paralelo...", Colors.PRIMARY)
-    h1_u, h1_t = os.getenv("H1_USER"), os.getenv("H1_TOKEN")
-    it_t = os.getenv("IT_TOKEN")
-    h1_u_safe = shlex.quote(h1_u) if h1_u else ""
-    h1_t_safe = shlex.quote(h1_t) if h1_t else ""
-    it_t_safe  = shlex.quote(it_t)  if it_t  else ""
+    h1_u = os.getenv("H1_USER", "")
+    h1_t = os.getenv("H1_TOKEN", "")
+    it_t = os.getenv("IT_TOKEN", "")
+    # Note: subprocess list args are passed directly — no shell quoting needed
 
     all_raw = to_set([])
     threads = []
@@ -122,10 +120,10 @@ def _fetch_global_wildcards():
         return _load_targets_from_history()
 
     tasks = []
-    if h1_u_safe and h1_t_safe:
-        tasks.append(("h1", [bbscope_path, "h1", "-b", "-o", "t", "-u", h1_u_safe, "-t", h1_t_safe, "--active-only"], TOOL_TIMEOUTS.get("uncover", 90)))
-    if it_t_safe:
-        tasks.append(("it", [bbscope_path, "it", "-b", "-o", "t", "-t", it_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
+    if h1_u and h1_t:
+        tasks.append(("h1", [bbscope_path, "h1", "-b", "-o", "t", "-u", h1_u, "-t", h1_t, "--active-only"], TOOL_TIMEOUTS.get("uncover", 90)))
+    if it_t:
+        tasks.append(("it", [bbscope_path, "it", "-b", "-o", "t", "-t", it_t], TOOL_TIMEOUTS.get("uncover", 90)))
 
     for t_name, t_cmd, t_time in tasks:
         th = threading.Thread(target=fetch_task, args=(t_name, t_cmd, t_time))
