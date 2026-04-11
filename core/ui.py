@@ -335,15 +335,25 @@ def ui_log(module: str, message: str, color=None):
         icon = ICONS.get(module.upper(), ICONS.get(module, "●"))
         ts = datetime.now().strftime("%H:%M:%S")
         with _stdout_lock:
+            sys.stdout.write("\r\033[2K")  # clear any in-progress spinner line
+            sys.stdout.flush()
             _console.print(f"[dim]{ts}[/dim] {icon} [bold]{module:<12}[/bold] {message}")
 
 def _buffer_append(module: str, message: str):
     ui_log(module, message)
 
 def ui_update_status(step: str, detail: str, color=None):
-    if _WATCHDOG_MODE and _is_transient_status_message(detail):
+    if _WATCHDOG_MODE:
+        if _is_transient_status_message(detail):
+            return
+        ui_log(step, detail, color)
         return
-    ui_log(step, detail, color)
+    # Non-watchdog: in-place spinner line (overwrite same line, no newline)
+    icon = ICONS.get(step.upper(), ICONS.get(step, "●"))
+    ts = datetime.now().strftime("%H:%M:%S")
+    with _stdout_lock:
+        sys.stdout.write(f"\r\033[2K{Colors.DIM}{ts}{Colors.RESET} {icon} {Colors.BOLD}{step:<12}{Colors.RESET} {detail}")
+        sys.stdout.flush()
 
 def ui_set_mission_meta(target: str, current: int = 0, total: int = 0):
     _live_view_meta["target"] = target
@@ -351,9 +361,8 @@ def ui_set_mission_meta(target: str, current: int = 0, total: int = 0):
     _live_view_meta["total"] = total
 
 def ui_banner():
-    _console.clear()
     _console.print(Panel(
-        "[bold cyan]HUNT3R v1.0-EXCALIBUR[/bold cyan]\n[dim]UX/UI PREDADOR - EDITION[/dim]",
+        "[bold cyan]HUNT3R v1.0-EXCALIBUR[/bold cyan]\n[dim]Autonomous Bug Bounty Hunter[/dim]",
         border_style="cyan", box=ROUNDED
     ))
 
@@ -392,7 +401,7 @@ def ui_mission_header(handle: str, score: int = 0):
         return  # Worker panels handle display in watchdog mode
     _console.clear()
     _console.print(Panel(
-        "[bold cyan]HUNT3R v1.0-EXCALIBUR[/bold cyan]\n[dim]UX/UI PREDADOR - EDITION[/dim]",
+        "[bold cyan]HUNT3R v1.0-EXCALIBUR[/bold cyan]\n[dim]Autonomous Bug Bounty Hunter[/dim]",
         border_style="cyan", box=ROUNDED
     ))
     clean_handle = handle.replace('_', '.').replace('*', '').upper()
@@ -819,11 +828,6 @@ def ui_custom_targets_list(targets: list) -> dict:
 
 
 def ui_main_menu() -> str:
-    _console.clear()
-    _console.print(Panel(
-        "[bold cyan]HUNT3R v1.0-EXCALIBUR[/bold cyan]\n[dim]Autonomous Bug Bounty Hunter[/dim]",
-        border_style="cyan", box=ROUNDED
-    ))
     print(f"  {Colors.BOLD}MENU PRINCIPAL{Colors.RESET}")
     print(f"  {'─'*44}")
     print(f"  {Colors.SECONDARY}[1]{Colors.RESET} {Colors.INFO}Plataformas  {Colors.DIM}(H1 / Intigriti / BC){Colors.RESET}")

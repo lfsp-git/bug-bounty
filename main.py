@@ -167,7 +167,7 @@ def state_platforms(orch: ProOrchestrator) -> None:
             t = ranked[idx]
             ui_clear()
             ui_banner()
-            orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
+            orch.start_mission(t)
             try:
                 input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
             except EOFError:
@@ -182,13 +182,14 @@ def state_manual(orch: ProOrchestrator) -> None:
     t = ui_manual_target_input()
     if not t:
         return
+    label = t.get('domain', t['domains'][0] if t.get('domains') else t['handle'])
     try:
-        ans = input(f"\n  {Colors.WARNING}Scan {t['domains'][0]}? (s/n): {Colors.RESET}")
+        ans = input(f"\n  {Colors.WARNING}Scan {label}? (s/n): {Colors.RESET}")
     except EOFError:
         ans = ""
     if ans.lower() == "s":
         try:
-            orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
+            orch.start_mission(t)
         except KeyboardInterrupt:
             ui_log("SCAN", "Scan cancelado pelo usuario.", Colors.WARNING)
         try:
@@ -211,13 +212,14 @@ def state_list(orch: ProOrchestrator) -> None:
     sel = ui_custom_targets_list(tgts)
     if not sel:
         return
+    label = sel.get('domain', sel.get('handle', sel['domains'][0]))
     try:
-        ans = input(f"\n  {Colors.WARNING}Scan {sel['domains'][0]}? (s/n): {Colors.RESET}")
+        ans = input(f"\n  {Colors.WARNING}Scan {label}? (s/n): {Colors.RESET}")
     except EOFError:
         ans = ""
     if ans.lower() == "s":
         try:
-            orch.start_mission(sel["handle"], sel["domains"], f"recon/db/{sel['handle']}", sel["score"])
+            orch.start_mission(sel)
         except KeyboardInterrupt:
             ui_log("SCAN", "Scan cancelado pelo usuario.", Colors.WARNING)
         try:
@@ -257,11 +259,11 @@ def state_hunt_all(orch: ProOrchestrator) -> None:
         label = t.get('domain', t.get('handle', '?'))
         ui_log("HUNT", f"[{idx}/{len(tgts)}] Iniciando: {label}", Colors.WARNING)
         try:
-            orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
+            orch.start_mission(t)
         except KeyboardInterrupt:
-            ui_log("HUNT", f"Scan de {label} cancelado. Continuar proximos? (s/n): ", Colors.WARNING)
+            ui_log("HUNT", f"Scan de {label} cancelado.", Colors.WARNING)
             try:
-                cont = input(f"  {Colors.WARNING}Continuar? (s/n): {Colors.RESET}")
+                cont = input(f"  {Colors.WARNING}Continuar com os proximos? (s/n): {Colors.RESET}")
             except EOFError:
                 cont = "n"
             if cont.lower() != "s":
@@ -275,7 +277,7 @@ def state_hunt_all(orch: ProOrchestrator) -> None:
         pass
 
 
-
+def _load_all_findings() -> list:
     """Load all JSONL findings from recon/baselines/."""
     findings = []
     for path in glob.glob("recon/baselines/*_findings.jsonl"):
