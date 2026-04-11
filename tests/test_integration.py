@@ -92,9 +92,9 @@ class TestLiveViewRaceCondition(unittest.TestCase):
         self.assertIsInstance(_live_view_lock, type(threading.RLock()))
 
     def test_live_view_data_has_all_tools(self):
-        """Live view data must contain all 7 expected tool keys."""
+        """Live view data must contain all 9 expected tool keys."""
         from core.ui import _live_view_data
-        expected = {"Subfinder", "DNSX", "Uncover", "HTTPX", "JS Hunter", "Katana", "Nuclei"}
+        expected = {"Subfinder", "DNSX", "Uncover", "Naabu", "HTTPX", "Katana", "URLFinder", "JS Hunter", "Nuclei"}
         self.assertEqual(set(_live_view_data.keys()), expected)
 
 

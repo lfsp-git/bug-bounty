@@ -81,14 +81,16 @@ ICONS = {
     "TAGS": "🏷️", "INFO": "ℹ️", "MISSION": "🎯", "SNAPSHOT": "📸",
     "NUCLEI INFRA": "🏗️", "NUCLEI ENDP": "💉", "NUCLEI DEEP": "🕳️",
     "ESCALATOR": "⛓️", "DIFF NOVO": "✨", "DIFF SECRETS": "🔥",
+    "NAABU": "🔌", "URLFINDER": "📜", "MERGE": "🔀",
 }
 
 TOOL_ICONS = {
     "Subfinder": "🌐", "DNSX": "🌍", "Uncover": "👁️",
-    "HTTPX": "⚡", "Katana": "🕷️", "JS Hunter": "🔑", "Nuclei": "☢️",
+    "Naabu": "🔌", "HTTPX": "⚡", "Katana": "🕷️",
+    "URLFinder": "📜", "JS Hunter": "🔑", "Nuclei": "☢️",
 }
 
-PIPELINE_TOOLS = ["Subfinder", "DNSX", "Uncover", "HTTPX", "Katana", "JS Hunter", "Nuclei"]
+PIPELINE_TOOLS = ["Subfinder", "DNSX", "Uncover", "Naabu", "HTTPX", "Katana", "URLFinder", "JS Hunter", "Nuclei"]
 
 # ─────────────────────────────────────────────────────────────
 # Global State
@@ -153,8 +155,10 @@ def _reset_live_view_data():
         "Subfinder":  {"status": "idle", "subs": 0,       "start_time": None, "eta": 0, "input_count": 0},
         "DNSX":       {"status": "idle", "live": 0,       "start_time": None, "eta": 0, "input_count": 0},
         "Uncover":    {"status": "idle", "takeovers": 0,  "start_time": None, "eta": 0, "input_count": 0},
+        "Naabu":      {"status": "idle", "ports": 0,      "start_time": None, "eta": 0, "input_count": 0},
         "HTTPX":      {"status": "idle", "endpoints": 0,  "start_time": None, "eta": 0, "input_count": 0},
         "Katana":     {"status": "idle", "crawled": 0,    "start_time": None, "eta": 0, "input_count": 0},
+        "URLFinder":  {"status": "idle", "hist_urls": 0,  "start_time": None, "eta": 0, "input_count": 0},
         "JS Hunter":  {"status": "idle", "secrets": 0,    "start_time": None, "eta": 0, "input_count": 0},
         "Nuclei":     {"status": "idle", "vulns": 0,      "start_time": None, "eta": 0, "input_count": 0,
                        "requests_total": 0, "requests_done": 0, "rps": 0, "matched": 0},
@@ -190,14 +194,18 @@ def ui_worker_done(worker_id: str, results: Dict):
             _workers[worker_id]['current_tool'] = None
     subs  = results.get('subdomains', 0)
     live  = results.get('alive', 0)
+    ports = results.get('open_ports', 0)
     ep    = results.get('endpoints', 0)
+    hist  = results.get('hist_urls', 0)
     sec   = results.get('js_secrets', 0) or results.get('secrets', 0)
     vulns = results.get('vulns', 0)
     t     = results.get('target', results.get('handle', '?'))
     color = "bold green" if vulns > 0 else "green"
+    port_str = f" pts:{ports}" if ports > 0 else ""
+    hist_str = f" hist:{hist}" if hist > 0 else ""
     _activity_push(worker_id, "RESULTADO",
-                   f"✓ {t}  sub:{subs} lv:{live} ep:{ep} sec:{sec} vuln:[bold red]{vulns}[/]" if vulns > 0
-                   else f"✓ {t}  sub:{subs} lv:{live} ep:{ep} sec:{sec} vuln:{vulns}", color)
+                   f"✓ {t}  sub:{subs} lv:{live}{port_str} ep:{ep}{hist_str} sec:{sec} vuln:[bold red]{vulns}[/]" if vulns > 0
+                   else f"✓ {t}  sub:{subs} lv:{live}{port_str} ep:{ep}{hist_str} sec:{sec} vuln:{vulns}", color)
     global _total_scanned
     with _stats_lock:
         _total_scanned += 1
@@ -222,7 +230,8 @@ def ui_worker_tool_finished(worker_id: str, tool: str, count: int = 0, elapsed: 
         if w['current_tool'] == tool:
             w['current_tool'] = None
         _METRIC = {'Subfinder': 'subs', 'DNSX': 'live', 'HTTPX': 'endpoints',
-                   'Katana': 'endpoints', 'JS Hunter': 'secrets', 'Nuclei': 'vulns'}
+                   'Naabu': 'live', 'Katana': 'endpoints', 'URLFinder': 'endpoints',
+                   'JS Hunter': 'secrets', 'Nuclei': 'vulns'}
         if tool in _METRIC:
             w['metrics'][_METRIC[tool]] = count
     color = "bold green" if count > 0 else "green"
@@ -439,9 +448,18 @@ def ui_scan_summary(results: dict):
         st.add_row("🎯 Alvo", clean_handle)
         st.add_row("📊 Score", str(results.get('score', 0)))
         st.add_row("🌐 Subs Vivos", f"{results.get('alive', 0)} / {results.get('subdomains', 0)}")
+        open_ports = results.get('open_ports', 0)
+        if open_ports > 0:
+            st.add_row("🔌 Portas Abertas", str(open_ports))
         st.add_row("⚡ Endpoints", str(results.get('endpoints', 0)))
+        hist_urls = results.get('hist_urls', 0)
+        if hist_urls > 0:
+            st.add_row("📜 URLs Históricas", str(hist_urls))
         st.add_row("🔑 Secrets", str(results.get('secrets', 0) or results.get('js_secrets', 0)))
-        st.add_row("☢️ Vulns", str(results.get('vulns', 0)))
+        vuln_val = results.get('vulns', 0)
+        vuln_style = "[bold red]" if vuln_val > 0 else ""
+        vuln_end   = "[/bold red]" if vuln_val > 0 else ""
+        st.add_row("☢️ Vulns", f"{vuln_style}{vuln_val}{vuln_end}")
         _console.print(st)
 
 # ─────────────────────────────────────────────────────────────
@@ -508,7 +526,7 @@ def _render_worker_panel(w: Dict) -> Panel:
         content = Align(Text("— WAITING —", style="dim white"), "center")
         border = "dim white"
         title = f"[dim]{wid}[/dim]"
-        return Panel(content, title=title, border_style=border, box=ROUNDED, padding=(0, 1), height=13)
+        return Panel(content, title=title, border_style=border, box=ROUNDED, padding=(0, 1), height=15)
 
     clean = target.replace('*', '').replace(':', '').upper()
     if len(clean) > 20:
@@ -604,7 +622,7 @@ def _render_worker_panel(w: Dict) -> Panel:
     title = f"[bold]{wid}[/bold]: [cyan]{clean}[/cyan] [{idx}/{total}] {elapsed_str}"
     return Panel(
         content, title=title, border_style=border, box=ROUNDED,
-        padding=(0, 0), height=13, expand=True
+        padding=(0, 0), height=15, expand=True
     )
 
 def _render_activity_panel(n: int = 18) -> Panel:
@@ -846,7 +864,7 @@ def ui_main_menu() -> str:
 __all__ = [
     'ui_log', 'ui_update_status', 'ui_banner', 'ui_clear', 'ui_clear_and_banner',
     'ui_mission_header', 'ui_mission_footer', 'ui_scan_summary', 'ui_set_mission_meta',
-    'ui_snapshot', 'Colors', 'ICONS', 'sanitize_input',
+    'ui_snapshot', 'Colors', 'ICONS', 'TOOL_ICONS', 'PIPELINE_TOOLS', 'sanitize_input',
     'tool_started', 'tool_finished', 'tool_cached', 'tool_error', 'nuclei_update',
     '_live_view_data', '_live_view_lock', '_stdout_lock', '_buffer_append',
     'ui_main_menu', 'ui_model_selection_menu', 'ui_platform_selection_menu',
@@ -854,5 +872,5 @@ __all__ = [
     'ui_enable_watchdog_mode', 'ui_worker_register', 'ui_worker_done',
     'ui_worker_tool_started', 'ui_worker_tool_finished', 'ui_worker_tool_cached',
     'ui_worker_tool_error', 'ui_worker_nuclei_update', 'ui_cycle_started',
-    'set_worker_context', '_get_current_worker',
+    'ui_interrupt_requested', 'set_worker_context', '_get_current_worker',
 ]

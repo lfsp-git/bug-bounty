@@ -144,7 +144,9 @@ def _build_results_snapshot(
         "score": target.get("score", 0),
         "subdomains": int(recon_counts.get("subdomains", 0) or 0),
         "alive": int(recon_counts.get("alive", 0) or 0),
+        "open_ports": int(recon_counts.get("open_ports", 0) or 0),
         "endpoints": int(recon_counts.get("httpx_urls", 0) or 0),
+        "hist_urls": int(vuln_counts.get("hist_urls", 0) or 0),
         "js_secrets": int(vuln_counts.get("js_secrets", 0) or 0),
         "vulns": int(vuln_counts.get("findings", 0) or 0),
         "phase_results": {
