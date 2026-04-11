@@ -226,7 +226,56 @@ def state_list(orch: ProOrchestrator) -> None:
             pass
 
 
-def _load_all_findings() -> list:
+def state_hunt_all(orch: ProOrchestrator) -> None:
+    """Scan every target in alvos.txt sequentially."""
+    ui_clear()
+    ui_banner()
+    tgts = load_custom_targets()
+    if not tgts:
+        ui_log("AVISO", "alvos.txt vazio ou sem entradas validas.", Colors.WARNING)
+        try:
+            input(f"\n  {Colors.DIM}[Enter]{Colors.RESET} ")
+        except EOFError:
+            pass
+        return
+
+    ui_log("HUNT", f"{len(tgts)} alvos encontrados em alvos.txt.", Colors.WARNING)
+    print(f"\n  {'─'*44}")
+    for i, t in enumerate(tgts, 1):
+        scope_tag = " [IP]" if t.get('scope_type') == 'ip' else ""
+        print(f"  {Colors.SECONDARY}[{i}]{Colors.RESET} {t.get('domain', t.get('handle'))}{scope_tag}")
+    print(f"  {'─'*44}")
+
+    try:
+        ans = input(f"\n  {Colors.WARNING}Cacar todos os {len(tgts)} alvos? (s/n): {Colors.RESET}")
+    except EOFError:
+        ans = ""
+    if ans.lower() != "s":
+        return
+
+    for idx, t in enumerate(tgts, 1):
+        label = t.get('domain', t.get('handle', '?'))
+        ui_log("HUNT", f"[{idx}/{len(tgts)}] Iniciando: {label}", Colors.WARNING)
+        try:
+            orch.start_mission(t["handle"], t["domains"], f"recon/db/{t['handle']}", t["score"])
+        except KeyboardInterrupt:
+            ui_log("HUNT", f"Scan de {label} cancelado. Continuar proximos? (s/n): ", Colors.WARNING)
+            try:
+                cont = input(f"  {Colors.WARNING}Continuar? (s/n): {Colors.RESET}")
+            except EOFError:
+                cont = "n"
+            if cont.lower() != "s":
+                ui_log("HUNT", "Caca encerrada pelo usuario.", Colors.WARNING)
+                break
+
+    ui_log("HUNT", f"Caca concluida. {len(tgts)} alvos processados.", Colors.SUCCESS)
+    try:
+        input(f"\n  {Colors.DIM}[Enter para voltar]{Colors.RESET} ")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+
     """Load all JSONL findings from recon/baselines/."""
     findings = []
     for path in glob.glob("recon/baselines/*_findings.jsonl"):
@@ -331,6 +380,12 @@ def main() -> None:
                 state_manual(orch)
             elif choice == 3:
                 state_list(orch)
+            elif choice == 4:
+                state_hunt_all(orch)
+            elif choice == 5:
+                ui_clear()
+                ui_banner()
+                select_model_interactive(ai)
             else:
                 ui_log("ERRO", "Opcao invalida.", Colors.ERROR)
                 try:

@@ -784,17 +784,21 @@ def ui_target_selection_list(ranked: list):
         print(f"  [{i}] {t.get('handle', 'unknown')} (score: {t.get('score', 0)})")
 
 def ui_manual_target_input() -> dict:
-    from core.config import validate_and_extract_domain
+    from core.config import validate_and_extract_domain, is_ip_target, expand_cidr
     try:
-        dom = input("  Dominio (ex: example.com): ").strip()
+        dom = input("  Dominio ou IP/CIDR (ex: example.com, 192.168.1.0/24): ").strip()
         if not dom:
             return {}
+        if is_ip_target(dom):
+            ips = expand_cidr(dom)
+            handle = dom.replace('.', '_').replace('/', '_').replace(':', '_')
+            return {'domain': dom, 'domains': ips, 'handle': handle, 'score': 30, 'scope_type': 'ip'}
         clean_domain = validate_and_extract_domain(dom)
         if not clean_domain:
-            print(f"  {Colors.ERROR}Dominio invalido.{Colors.RESET}")
+            print(f"  {Colors.ERROR}Entrada invalida (dominio, IP ou CIDR esperado).{Colors.RESET}")
             return {}
         handle = clean_domain.replace('.', '_').replace('-', '_')
-        return {'domains': [clean_domain], 'handle': handle, 'score': 30}
+        return {'domain': clean_domain, 'domains': [clean_domain], 'handle': handle, 'score': 30}
     except Exception as e:
         logging.error(f"Manual target input error: {e}")
         return {}
@@ -803,7 +807,8 @@ def ui_custom_targets_list(targets: list) -> dict:
     if not targets:
         return {}
     for i, t in enumerate(targets, 1):
-        print(f"  [{i}] {t.get('domain')}")
+        scope = f" {Colors.DIM}[IP]{Colors.RESET}" if t.get('scope_type') == 'ip' else ""
+        print(f"  {Colors.SECONDARY}[{i}]{Colors.RESET} {t.get('domain', t.get('handle', '?'))}{scope}")
     try:
         sel = int(input(f"  Selecione (1-{len(targets)}): ").strip())
         if 1 <= sel <= len(targets):
@@ -812,21 +817,25 @@ def ui_custom_targets_list(targets: list) -> dict:
         pass
     return {}
 
+
 def ui_main_menu() -> str:
     _console.clear()
     _console.print(Panel(
-        "[bold cyan]HUNT3R v1.0-EXCALIBUR[/bold cyan]\n[dim]UX/UI PREDADOR - EDITION[/dim]",
+        "[bold cyan]HUNT3R v1.0-EXCALIBUR[/bold cyan]\n[dim]Autonomous Bug Bounty Hunter[/dim]",
         border_style="cyan", box=ROUNDED
     ))
     print(f"  {Colors.BOLD}MENU PRINCIPAL{Colors.RESET}")
-    print(f"  {'─'*40}")
-    print(f"  {Colors.SECONDARY}[1]{Colors.RESET} {Colors.INFO}Executar Watchdog (Recon Contínuo){Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[2]{Colors.RESET} {Colors.INFO}Executar Scan Unico (Alvo Especifico){Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[3]{Colors.RESET} {Colors.INFO}Trocar Modelo de IA{Colors.RESET}")
-    print(f"  {Colors.SECONDARY}[0]{Colors.RESET} {Colors.INFO}Sair{Colors.RESET}")
-    print(f"  {'─'*40}")
+    print(f"  {'─'*44}")
+    print(f"  {Colors.SECONDARY}[1]{Colors.RESET} {Colors.INFO}Plataformas  {Colors.DIM}(H1 / Intigriti / BC){Colors.RESET}")
+    print(f"  {Colors.SECONDARY}[2]{Colors.RESET} {Colors.INFO}Alvo Manual  {Colors.DIM}(dominio, IP ou CIDR){Colors.RESET}")
+    print(f"  {Colors.SECONDARY}[3]{Colors.RESET} {Colors.INFO}Selecionar da alvos.txt{Colors.RESET}")
+    print(f"  {Colors.SECONDARY}[4]{Colors.RESET} {Colors.WARNING}☠  Cacar TODOS os alvos.txt{Colors.RESET}")
+    print(f"  {Colors.SECONDARY}[5]{Colors.RESET} {Colors.DIM}Trocar Modelo de IA{Colors.RESET}")
+    print(f"  {'─'*44}")
+    print(f"  {Colors.SECONDARY}[0]{Colors.RESET} {Colors.DIM}Sair{Colors.RESET}")
+    print(f"  {'─'*44}")
     try:
-        return input(f"  {Colors.BOLD}Escolha uma opcao: {Colors.RESET}").strip()
+        return input(f"  {Colors.BOLD}Opcao: {Colors.RESET}").strip()
     except EOFError:
         return ""
 
