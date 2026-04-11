@@ -473,7 +473,15 @@ class MissionRunner:
         # JS Hunter: extrai segredos de arquivos JavaScript
         js_secrets_file = paths["live"] + ".js_secrets"
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("JS Hunter")
+        # Count .js URLs in katana output for accurate display
+        js_input_count = 0
+        if os.path.exists(katana_file):
+            try:
+                with open(katana_file, 'r', encoding='utf-8', errors='ignore') as _jf:
+                    js_input_count = sum(1 for l in _jf if l.strip().endswith(('.js', '.mjs', '.ts')))
+            except OSError:
+                pass
+        _tool_start("JS Hunter", input_count=js_input_count)
         ok = _run_with_progress("JS Hunter", lambda: run_js_hunter(katana_file, js_secrets_file))
         if ok:
             _tool_done("JS Hunter", "secrets", js_secrets_file)

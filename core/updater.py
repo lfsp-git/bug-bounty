@@ -127,44 +127,32 @@ class ToolUpdater:
         return res
 
     def _upd_nuc_tpl(self, force=False):
-        """Atualiza templates do Nuclei - robusto contra shell injection."""
+        """Atualiza templates do Nuclei via 'nuclei -update-templates'."""
         if not force and not self._should_upd('nuc_tpl'): return
 
         self._log_updater(f"  {Colors.WARNING}*{Colors.RESET} Nuclei Templates...")
 
-        nc = self.config.get('tools',{}).get('nuclei',{})
-        td = os.path.expanduser(nc.get('templates_dir','~/nuclei-templates'))
+        exe = find_tool("nuclei")
+        td = os.path.expanduser('~/nuclei-templates')
 
         try:
-            os.makedirs(os.path.dirname(td) if os.path.dirname(td) else '.', exist_ok=True)
+            result = subprocess.run(
+                [exe, "-update-templates"],
+                shell=False, timeout=300, capture_output=True, text=True
+            )
+            ok = result.returncode == 0 or os.path.exists(td)
 
-            if os.path.exists(os.path.join(td, '.git')):
-                result = subprocess.run(
-                    ['git', '-C', td, 'pull', '--quiet', 'origin', 'main'],
-                    shell=False, timeout=60, capture_output=True
-                )
-                ok = result.returncode == 0
-            else:
-                repo_url = nc.get('templates_repo', 'https://github.com/projectdiscovery/nuclei-templates')
-                if not self._validate_git_url(repo_url):
-                    raise ValueError(f"Invalid git URL: {repo_url}")
-                result = subprocess.run(
-                    ['git', 'clone', '--depth', '1', '--quiet', repo_url, td],
-                    shell=False, timeout=180, capture_output=True
-                )
-                ok = result.returncode == 0
-
-            if ok or os.path.exists(td):
+            if ok:
                 self._mark_upd('nuc_tpl')
-                count = len([f for f in os.listdir(td) if f.endswith('.yaml')]) if os.path.exists(td) else 0
+                count = sum(1 for root, _, files in os.walk(td) for f in files if f.endswith('.yaml'))
                 self._log_updater(f"\r  {Colors.SUCCESS}OK{Colors.RESET} Nuclei Templates ({count} templates)\n")
             else:
-                self._log_updater(f"\r  {Colors.WARNING}-{Colors.RESET} Nuclei Templates (sem cache)\n")
+                self._log_updater(f"\r  {Colors.WARNING}-{Colors.RESET} Nuclei Templates (falha)\n")
 
         except KeyboardInterrupt:
             self._log_updater(f"\r  {Colors.WARNING}!{Colors.RESET} Nuclei Templates (interrompido)\n")
             raise
-        except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        except (OSError, subprocess.TimeoutExpired) as e:
             logger.error(f"Nuclei templates update failed: {e}")
             self._log_updater(f"\r  {Colors.WARNING}-{Colors.RESET} Nuclei Templates ({str(e)[:40]})\n")
 
