@@ -20,7 +20,6 @@ def _ensure_venv() -> None:
         file=sys.stderr,
     )
 
-_ensure_venv()
 # ─────────────────────────────────────────────────────────────────────────────
 
 import argparse
@@ -344,4 +343,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    _ensure_venv()
     main()

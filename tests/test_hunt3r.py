@@ -278,7 +278,7 @@ class TestExport(unittest.TestCase):
         from core.output import ExportFormatter
 
         formatter = ExportFormatter()
-        out = formatter.export(self._sample_findings(), "pdf")
+        out = formatter.export(self._sample_findings(), "docx")
         self.assertEqual(out, "")
 
 
