@@ -212,6 +212,7 @@ class BugBountyReporter:
             lines.append(f"**Description:** {description}\n")
 
         if detailed:
+            lines.extend(self._submission_ready_block(finding))
             extracted = finding.get("extracted-results", [])
             if extracted:
                 lines.append("**Extracted Results:**")
@@ -237,4 +238,39 @@ class BugBountyReporter:
             lines.append("")
 
         lines.append("---\n")
+        return lines
+
+    def _submission_ready_block(self, finding: Dict) -> List[str]:
+        """Build a concise submission-ready section for H1/BC style reports."""
+        severity = finding.get("severity", "info").upper()
+        host = finding.get("host", "N/A")
+        matched = finding.get("matched-at", "N/A")
+        name = finding.get("info", {}).get("name", finding.get("template-id", "Finding"))
+        description = finding.get("info", {}).get("description", "")
+        impact = finding.get("info", {}).get("impact", "")
+
+        lines = [
+            "**Submission Draft (H1/BC-ready):**",
+            "```markdown",
+            f"Title: [{severity}] {name} on {host}",
+            "",
+            "Summary:",
+            description or "Security issue detected by automated recon; manual validation required.",
+            "",
+            "Impact:",
+            impact or "Potential security impact depends on target context and exploitability.",
+            "",
+            "Steps to Reproduce:",
+            f"1. Access target: {host}",
+            f"2. Trigger/check vector observed at: {matched}",
+            "3. Confirm behavior and collect evidence (response/body/status).",
+            "",
+            "Expected Behavior:",
+            "The application should not expose this vulnerable behavior.",
+            "",
+            "Actual Behavior:",
+            "The vulnerable behavior was observable in scan evidence.",
+            "```",
+            "",
+        ]
         return lines

@@ -425,6 +425,8 @@ class TestReporter(unittest.TestCase):
             content = open(path).read()
             self.assertIn("cve-2021-44228", content)
             self.assertIn("critical", content.lower())
+            self.assertIn("Submission Draft (H1/BC-ready)", content)
+            self.assertIn("Steps to Reproduce", content)
 
 
 # ---------------------------------------------------------------------------
