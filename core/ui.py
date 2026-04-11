@@ -165,6 +165,8 @@ _reset_live_view_data()
 _render_thread: Optional[threading.Thread] = None
 _render_stop = threading.Event()
 _live_thread: Optional[threading.Thread] = None  # single-mode legacy
+_MIN_FULLSCREEN_COLS = 80
+_MIN_FULLSCREEN_LINES = 24
 
 # ─────────────────────────────────────────────────────────────
 # Per-Worker API (called by scanner.py via thread-local routing)
@@ -629,12 +631,28 @@ def _build_watchdog_layout():
         _render_activity_panel(n=18),
     )
 
+
+def _can_use_fullscreen_live() -> bool:
+    """Guard full-screen mode for very small terminals."""
+    try:
+        size = os.get_terminal_size()
+        return size.columns >= _MIN_FULLSCREEN_COLS and size.lines >= _MIN_FULLSCREEN_LINES
+    except OSError:
+        return True
+
 def _render_loop():
     console = Console(force_terminal=True)
     retries = 0
+    use_fullscreen = _can_use_fullscreen_live()
+    if not use_fullscreen:
+        logging.warning(
+            "Terminal too small for fullscreen Live (%sx%s); using non-fullscreen mode.",
+            _MIN_FULLSCREEN_COLS,
+            _MIN_FULLSCREEN_LINES,
+        )
     while not _render_stop.is_set() and retries < 5:
         try:
-            with Live(console=console, refresh_per_second=4, screen=True) as live:
+            with Live(console=console, refresh_per_second=4, screen=use_fullscreen) as live:
                 while not _render_stop.is_set():
                     try:
                         live.update(_build_watchdog_layout())

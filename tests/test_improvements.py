@@ -192,6 +192,14 @@ def test_timeout_config():
     
     assert has_2s_timeout and not old_5s_timeout
 
+def test_adaptive_nuclei_timeout_override():
+    """Verify run_nuclei supports adaptive timeout override parameter."""
+    with open('recon/engines.py', 'r') as f:
+        content = f.read()
+    has_param = 'timeout_override=None' in content
+    has_usage = 'timeout_override' in content and 'get_tool_timeout("nuclei")' in content
+    assert has_param and has_usage
+
 def test_smart_tag_integration():
     """Verify smart tags are integrated in scanner"""
     print("\n" + "=" * 70)

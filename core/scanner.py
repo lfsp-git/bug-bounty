@@ -41,6 +41,8 @@ from core.output import NotificationDispatcher, BugBountyReporter
 
 _CACHE_TIMES = "recon/tool_times.json"
 _RECORD_TOOL_TIMES = True  # Can be disabled in watchdog mode to prevent cache modification
+_NUCLEI_TIMEOUT_LIVE_HOST_THRESHOLD = 400
+_NUCLEI_TIMEOUT_LARGE_SCAN = 5400
 
 def _get_worker_id() -> str:
     """Get current worker ID from thread-local (set by watchdog.py)."""
@@ -451,11 +453,20 @@ class MissionRunner:
         # Nuclei: scanning de vulnerabilidades com URLs do HTTPX
         findings_file = paths["fin"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
-        _tool_start("Nuclei", input_count=count_lines(recon_input))
+        live_inputs = count_lines(recon_input)
+        timeout_override = None
+        if live_inputs >= _NUCLEI_TIMEOUT_LIVE_HOST_THRESHOLD:
+            timeout_override = _NUCLEI_TIMEOUT_LARGE_SCAN
+            ui_log(
+                "NUCLEI",
+                f"Large target set detected ({live_inputs} hosts), timeout -> {timeout_override}s",
+                Colors.WARNING,
+            )
+        _tool_start("Nuclei", input_count=live_inputs)
         ok = _run_with_progress("Nuclei", lambda: run_nuclei(
             recon_input, findings_file, tags=nuclei_tags,
             rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback,
-            custom_templates=self.custom_template_paths),
+            custom_templates=self.custom_template_paths, timeout_override=timeout_override),
             extra_stats_fn=_nuclei_extra_stats)
         if ok:
             _tool_done("Nuclei", "vulns", findings_file)

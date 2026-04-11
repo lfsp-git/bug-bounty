@@ -520,3 +520,7 @@ class TestWatchdogUI(unittest.TestCase):
         self.assertEqual(nq["done"], 500)
         self.assertEqual(nq["total"], 1200)
         self.assertEqual(nq["matched"], 3)
+
+    def test_small_terminal_guard_callable(self):
+        from core.ui import _can_use_fullscreen_live
+        self.assertIsInstance(_can_use_fullscreen_live(), bool)

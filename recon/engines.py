@@ -100,7 +100,16 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
            f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "2"]
     run_cmd(cmd, "Katana", output_file)
 
-def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=None, progress_callback=None, custom_templates=None):
+def run_nuclei(
+    input_file,
+    output_file,
+    tags="",
+    stats_pipe=None,
+    rate_limit=None,
+    progress_callback=None,
+    custom_templates=None,
+    timeout_override=None,
+):
     """Run Nuclei with -stats -sj for real-time progress via stderr streaming.
     
     Uses Popen instead of run_cmd to parse JSON stats from stderr in real-time.
@@ -144,7 +153,7 @@ def run_nuclei(input_file, output_file, tags="", stats_pipe=None, rate_limit=Non
         for template_path in custom_templates:
             cmd.extend(["-td", template_path])
 
-    timeout = get_tool_timeout("nuclei")
+    timeout = int(timeout_override) if isinstance(timeout_override, (int, float)) and timeout_override > 0 else get_tool_timeout("nuclei")
 
     proc = None
     try:
