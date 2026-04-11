@@ -114,6 +114,8 @@ class BountyScorer:
         # Based on bounty range (min bounty used as proxy)
         bounty_range = program.get('bounty_range') or (0, 1000)
         min_bounty = bounty_range[0] if isinstance(bounty_range, (tuple, list)) and len(bounty_range) > 0 else 0
+        if not isinstance(min_bounty, (int, float)):
+            min_bounty = 0
         
         if min_bounty >= 5000:
             budget_score = 100
@@ -167,7 +169,7 @@ class BountyScorer:
         
         # Boost if we've found something before
         last_found = program.get('last_found', None)
-        if last_found:
+        if isinstance(last_found, (int, float)):
             hours_since_find = (current_timestamp - last_found) / 3600
             if hours_since_find < 24:  # Found something recently
                 finding_rate_score = min(100, finding_rate_score * 1.5)
