@@ -92,10 +92,9 @@ def _fetch_global_wildcards():
 
     ui_log("WATCHDOG", "Cache expirado. Sincronizando com APIs em paralelo...", Colors.PRIMARY)
     h1_u, h1_t = os.getenv("H1_USER"), os.getenv("H1_TOKEN")
-    bc_t, it_t = os.getenv("BC_TOKEN"), os.getenv("IT_TOKEN")
+    it_t = os.getenv("IT_TOKEN")
     h1_u_safe = shlex.quote(h1_u) if h1_u else ""
     h1_t_safe = shlex.quote(h1_t) if h1_t else ""
-    bc_t_safe  = shlex.quote(bc_t)  if bc_t  else ""
     it_t_safe  = shlex.quote(it_t)  if it_t  else ""
 
     all_raw = to_set([])
@@ -124,8 +123,6 @@ def _fetch_global_wildcards():
     tasks = []
     if h1_u_safe and h1_t_safe:
         tasks.append(("h1", [bbscope_path, "h1", "-b", "-o", "t", "-u", h1_u_safe, "-t", h1_t_safe, "--active-only"], TOOL_TIMEOUTS.get("uncover", 90)))
-    if bc_t_safe:
-        tasks.append(("bc", [bbscope_path, "bc", "-b", "-o", "t", "-t", bc_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
     if it_t_safe:
         tasks.append(("it", [bbscope_path, "it", "-b", "-o", "t", "-t", it_t_safe], TOOL_TIMEOUTS.get("uncover", 90)))
 

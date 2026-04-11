@@ -27,7 +27,7 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
         with patch("recon.tools.find_tool", return_value="bbscope"), \
              patch("shutil.which", return_value=None), \
              patch("os.path.exists", return_value=False), \
-             patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "BC_TOKEN": "", "IT_TOKEN": ""}):
+             patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "IT_TOKEN": ""}):
             result = wd._fetch_global_wildcards()
         self.assertEqual(result, [])
 
@@ -42,7 +42,7 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
 
         with patch("recon.tools.find_tool", return_value="/usr/local/bin/bbscope"), \
              patch("shutil.which", return_value="/usr/local/bin/bbscope"), \
-             patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "BC_TOKEN": "", "IT_TOKEN": ""}), \
+             patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "IT_TOKEN": ""}), \
              patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="*.example.com\n")
             # Patch threading.Thread to run synchronously

@@ -134,7 +134,7 @@ def run_dry_run() -> None:
         pm = PlatformManager()
         all_targets: List[Dict] = []
 
-        for platform in ("h1", "bc", "it"):
+        for platform in ("h1", "it"):
             try:
                 targets = pm.get_all_programs_from_platform(platform)
                 all_targets.extend(targets)

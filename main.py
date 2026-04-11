@@ -40,7 +40,7 @@ def _load_env() -> None:
         except OSError as e:
             logger.error(f"Failed to load .env: {e}")
 
-    missing = [t for t in ("H1_TOKEN", "BC_TOKEN", "IT_TOKEN") if not os.getenv(t)]
+    missing = [t for t in ("H1_TOKEN", "IT_TOKEN") if not os.getenv(t)]
     if missing:
         logger.warning(f"Missing platform tokens: {', '.join(missing)}")
     if os.getenv("H1_TOKEN") and not os.getenv("H1_USER"):
@@ -48,7 +48,7 @@ def _load_env() -> None:
 
     # Detect placeholder values that were never replaced
     placeholder_markers = ("your_", "xxxxx", "changeme", "token_here", "key_here")
-    for key in ("H1_TOKEN", "BC_TOKEN", "IT_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"):
+    for key in ("H1_TOKEN", "IT_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"):
         val = os.getenv(key, "")
         if val and any(m in val.lower() for m in placeholder_markers):
             logger.warning(f"Env var {key} looks like a placeholder — did you fill in .env?")
