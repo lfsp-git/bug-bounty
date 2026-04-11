@@ -31,6 +31,20 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
             result = wd._fetch_global_wildcards()
         self.assertEqual(result, [])
 
+    def test_bbscope_missing_uses_history_fallback(self):
+        import core.watchdog as wd
+
+        history_targets = [
+            {"handle": "example_com", "original_handle": "example.com", "domains": ["example.com"], "score": 50}
+        ]
+        with patch("recon.tools.find_tool", return_value="bbscope"), \
+             patch("shutil.which", return_value=None), \
+             patch.object(wd, "_load_targets_from_history", return_value=history_targets), \
+             patch("os.path.exists", return_value=False), \
+             patch.dict(os.environ, {"H1_USER": "u", "H1_TOKEN": "t", "IT_TOKEN": ""}):
+            result = wd._fetch_global_wildcards()
+        self.assertEqual(result, history_targets)
+
     def test_bbscope_found_uses_resolved_path(self):
         """When bbscope IS found, commands use the resolved path."""
         import core.watchdog as wd
@@ -60,6 +74,11 @@ class TestWatchdogBbscopeFallback(unittest.TestCase):
         secs = wd._compute_next_sleep_seconds({"targets": 10, "changed": 0, "errors": 0})
         self.assertIsInstance(secs, int)
         self.assertGreater(secs, 0)
+
+    def test_compute_next_sleep_seconds_empty_cycle_short_retry(self):
+        import core.watchdog as wd
+        secs = wd._compute_next_sleep_seconds({"targets": 0, "changed": 0, "errors": 0})
+        self.assertEqual(secs, 900)
 
 
 class TestLiveViewRaceCondition(unittest.TestCase):

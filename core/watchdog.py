@@ -44,6 +44,7 @@ MAX_TARGETS_PER_CYCLE = WATCHDOG_MAX_TARGETS
 MAX_PARALLEL_WORKERS = WATCHDOG_WORKERS
 _ADAPTIVE_SLEEP_MIN = max(1800, SLEEP_MIN // 2)
 _ADAPTIVE_SLEEP_MAX = SLEEP_MAX * 2
+_EMPTY_CYCLE_RETRY_SECONDS = 900
 
 TARGET_BLACKLIST = ['ui', 'spotify', 'gitlab', 'coinbase']
 
@@ -118,7 +119,7 @@ def _fetch_global_wildcards():
     bbscope_path = find_tool("bbscope")
     if bbscope_path == "bbscope" and not shutil.which("bbscope"):
         ui_log("WATCHDOG", "bbscope nao encontrado. Pulando coleta de wildcards via API.", Colors.WARNING)
-        return []
+        return _load_targets_from_history()
 
     tasks = []
     if h1_u_safe and h1_t_safe:
@@ -140,6 +141,21 @@ def _fetch_global_wildcards():
             f.write('\n'.join(list(all_raw)))
 
     return _process_raw_to_targets(list(all_raw))
+
+
+def _load_targets_from_history():
+    """Fallback targets when API collection is unavailable."""
+    if not os.path.exists(GLOBAL_TARGETS_HISTORY):
+        return []
+    try:
+        with open(GLOBAL_TARGETS_HISTORY, "r", encoding="utf-8") as f:
+            raw_list = [line.strip() for line in f if line.strip()]
+        if raw_list:
+            ui_log("WATCHDOG", f"Fallback: usando {len(raw_list)} alvos do historico local.", Colors.WARNING)
+        return _process_raw_to_targets(raw_list)
+    except OSError as e:
+        logging.warning(f"Failed to read watchdog fallback history: {e}")
+        return []
 
 def _process_raw_to_targets(raw_list):
     history = to_set([])
@@ -262,6 +278,8 @@ def _compute_next_sleep_seconds(cycle_metrics: dict) -> int:
     targets = int(cycle_metrics.get("targets", 0))
     changed = int(cycle_metrics.get("changed", 0))
     errors = int(cycle_metrics.get("errors", 0))
+    if targets == 0:
+        return _EMPTY_CYCLE_RETRY_SECONDS
     change_ratio = (changed / targets) if targets > 0 else 0.0
 
     # Adaptive policy:
