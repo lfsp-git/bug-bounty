@@ -83,10 +83,26 @@ Resultado final da missão inclui:
 
 | Canal | Conteúdo | Trigger |
 |-------|----------|---------|
-| Telegram | Vuln Medium/High/Critical (nuclei) | Finding por alvo |
-| Telegram | Segredo JS CRITICAL/HIGH/MEDIUM | JS Hunter com severity no finding |
+| Telegram | Vuln Medium/High/Critical (nuclei) — **agrupado por template** | Finding por alvo |
+| Telegram | Segredo JS CRITICAL/HIGH/MEDIUM — **agrupado por tipo** | JS Hunter com severity no finding |
+| Telegram | Scan summary card (apenas quando há vulns/secrets) | Fim de missão |
 | Discord | Stats de scan (sub/host/ports/ep/hist/sec/vuln embed) | Fim de cada missão |
 | Discord | Heartbeat/rain-check | Fim de cada ciclo watchdog |
+
+### Telegram: Grouping de alertas (v1.1-OVERLORD)
+
+**Nuclei findings** são agrupados por `(severity, template-id)` antes do envio:
+- 1 mensagem por template com lista de até 5 matched URLs
+- Inclui: `description` do template, primeiro `extracted-results`, CVE se presente
+- Dedup por `tg:nuclei:{target}:{sev}:{tid}` — re-runs não respamam
+
+**JS Secrets** são agrupados por `(type, severity)`:
+- 1 mensagem por tipo com count total + até 3 sources + amostras de valor
+- Previne 40+ msgs individuais de generic_url_param / crypto endpoints
+
+**Scan summary** — card compacto com totais após cada missão:
+- Disparado apenas quando `vulns > 0` ou `js_secrets > 0`
+- Campos: ícone por severidade máxima, contagens, endpoints, duração, plataforma
 
 ## 8. Flags das ferramentas (implementadas)
 
@@ -199,7 +215,34 @@ corresponder, o scan retorna ao modo padrão (todas as templates + `-tags` filte
 | iis / aspnet | `http/cves/iis`, `http/misconfiguration/iis` |
 | apache | `http/cves/apache`, `http/misconfiguration/apache` |
 | graphql | `http/graphql`, `http/cves/graphql` |
-| (todos) | `http/misconfiguration`, `http/exposures`, `http/takeovers`, `http/default-logins`, `http/cves` |
+| (todos) | `http/misconfiguration`, `http/exposures`, `http/takeovers`, `http/default-logins` |
+
+> **Nota**: `http/cves` (6000+ templates) foi removido de `core_dirs`. CVEs agora chegam
+> exclusivamente via `TECH_DIR_MAP` subdirs (10-50 templates por tech).
+> Isso foi a maior causa de explosão de requisições (13.8M → ~12K em alvo real).
+
+### Nuclei: Stealth URL Cap (v1.1-OVERLORD)
+
+Templates stealth (`http/misconfiguration`, `http/exposures`, `http/takeovers`,
+`http/default-logins`) são **verificações a nível de host** — rodá-los contra
+1336 URLs crawladas gera 445× requisições duplicadas.
+
+**`_NUCLEI_STEALTH_URL_THRESHOLD=100`** (env: `HUNT3R_STEALTH_URL_THRESHOLD`):
+quando template dirs estão ativos e o count de URLs > threshold, o Nuclei usa
+o arquivo HTTPX de hosts vivos (`recon_input`) ao invés do arquivo de URLs crawladas.
+
+| Cenário | Input do Nuclei | Estimativa |
+|---------|----------------|-----------|
+| Dirs ativos + URLs ≤ 100 | Merged URLs file | URLs × templates |
+| **Dirs ativos + URLs > 100** | HTTPX hosts file (3-10 hosts) | ~12K req (-99.8%) |
+| Sem dirs | Merged URLs file | Tags filter ativo |
+
+### Nuclei: `-tags` desativado quando dirs ativos
+
+Quando `valid_tdirs` está ativo, `-tags` é omitido para evitar expansão dupla
+de escopo (dirs já filtram por tech; tags redunda e re-expande).
+
+`recon/engines.py:run_nuclei()` line 351-359.
 
 ## 14. Limitações conhecidas
 
@@ -316,10 +359,42 @@ Para cada decisão INJECT:
 - KeyboardInterrupt propagado normalmente
 - Toda exceção inesperada → `logging.warning` + retorna result dict com `ok=False`
 
+## 17. Redis PubSub UI Bridge (v1.1-OVERLORD)
+
+### Problema
+
+Workers Celery atualizam o dict `_workers` em seu próprio processo — o watchdog
+Rich Live nunca enxerga essas atualizações.
+
+### Solução: `core/ui_bridge.py`
+
+| Componente | Localização | Responsabilidade |
+|-----------|------------|-----------------|
+| `UIEventPublisher` | Worker (celery_app.py) | Serializa eventos ui_worker_* e publica no Redis |
+| `UIEventSubscriber` | Watchdog (watchdog.py) | Subscribe + drena lista TTL; despacha para core/ui.py |
+| `_dispatch_event()` | ui_bridge.py | Mapeia event_type → `ui_worker_*` / `ui_log` |
+
+### Canal Redis
+
+- PubSub: `hunt3r:ui_events` — eventos em tempo real
+- TTL list: `hunt3r:ui_events:ttl` — replay após crash do watchdog (RPUSH+EXPIRE)
+- `HUNT3R_UI_TTL` (env, default 300s) — TTL dos eventos de crash recovery
+
+### Tipos de evento suportados
+
+`start`, `tool_start`, `tool_done`, `tool_progress`, `task_complete`,
+`task_error`, `mission_header`, `mission_footer`, `log`
+
+### Tolerância a falhas
+
+- Publisher é no-op se Redis inacessível (log.warning apenas)
+- `set_ui_bridge_publisher(None)` no `finally` do task evita leak entre tasks Celery
+- Eventos com `ts` mais velho que `TTL_SECONDS` são descartados durante replay
+
 ## 16. Baseline de validação
 
 ```bash
 python3 -m pytest tests/ -q
 ```
 
-Baseline atual: **364 testes aprovados, 11 subtestes, 0 falhas**
+Baseline atual: **382 testes aprovados, 11 subtestes, 0 falhas**

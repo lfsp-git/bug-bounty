@@ -887,32 +887,38 @@ class MissionRunner:
             logging.warning(f"Template dir detection failed: {e}")
             return []
 
-    def _notify_and_report(self, paths: dict, results: dict):
+    def _notify_and_report(self, paths: dict, results: dict, elapsed_s: float = 0.0):
         """Send notifications and generate bug bounty report after scan."""
         h = self.target.get('handle', 'unknown')
         platform = self.target.get('platform', 'unknown')
         findings_path = paths["fin"]
         js_secrets_path = paths["live"] + ".js_secrets"
 
-        # 1. Telegram: Critical/High/Medium vulnerabilities only
+        # 1. Telegram: Critical/High/Medium vulnerabilities (grouped by template)
         try:
             NotificationDispatcher.alert_nuclei(findings_path, h)
         except Exception as e:
             logging.warning(f"Notification failed: {e}")
 
-        # 2. Telegram: JS secrets (Critical/High/Medium only)
+        # 2. Telegram: JS secrets (grouped by type)
         try:
             NotificationDispatcher.alert_js_secrets(js_secrets_path, h)
         except Exception as e:
             logging.warning(f"JS secrets notification failed: {e}")
 
-        # 3. Discord: scan statistics summary (no individual vulns)
+        # 3. Telegram: scan summary card (only when vulns/secrets found)
+        try:
+            NotificationDispatcher.alert_scan_summary_telegram(h, platform, results, elapsed_s)
+        except Exception as e:
+            logging.warning(f"Telegram scan summary failed: {e}")
+
+        # 4. Discord: scan statistics summary (no individual vulns)
         try:
             NotificationDispatcher.alert_scan_complete(h, platform, results)
         except Exception as e:
             logging.warning(f"Discord scan summary failed: {e}")
 
-        # 4. Generate bug bounty report (Markdown, ready for submission)
+        # 5. Generate bug bounty report (Markdown, ready for submission)
         try:
             reporter = BugBountyReporter(h, platform=platform)
             report_path = reporter.generate(
@@ -938,6 +944,7 @@ class MissionRunner:
 
         ui_mission_header(h, self.target.get('score', 0))
         ui_set_mission_meta(self.target.get('original_handle', h))
+        _mission_start = time.monotonic()
         try:
             recon_result = self._run_recon_phase(paths, self.target.get('domains', []))
             vuln_result = self._run_vulnerability_phase(paths)
@@ -946,6 +953,7 @@ class MissionRunner:
             ui_mission_footer()
             raise
         
+        elapsed_s = time.monotonic() - _mission_start
         results = _build_results_snapshot(self.target, recon_result, vuln_result)
         phase_errors = recon_result.get("errors", []) + vuln_result.get("errors", [])
         results["errors"] = phase_errors
@@ -970,7 +978,7 @@ class MissionRunner:
         ReconDiff.save_baseline(h, results)
 
         # Notifica e gera relatório (EXCALIBUR pipeline final step)
-        self._notify_and_report(paths, results)
+        self._notify_and_report(paths, results, elapsed_s)
 
         return results
 

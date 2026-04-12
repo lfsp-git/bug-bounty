@@ -1,6 +1,18 @@
 # Hunt3r — Changelog
 
-## 2026-04-11 — Deep Pipeline + UI Full Refresh
+## 2026-04-12 — OVERLORD: Telegram Grouping + Docs Update
+
+### Telegram: grouped alerts + scan summary
+- `core/notifier.py`: `alert_nuclei()` agora agrupa por `(severity, template-id)` — 1 msg Telegram por template com lista de até 5 matched URLs + description + extracted-results
+- `core/notifier.py`: `alert_js_secrets()` agora agrupa por `(type, severity)` — 1 msg por tipo com count total + sources + amostras (previne 40+ msgs de generic_url_param)
+- `core/notifier.py`: `alert_nuclei_telegram()` (pre-filtered list path) também usa grouping + escalated individuais
+- `core/notifier.py`: novo `alert_scan_summary_telegram()` — card compacto de fim de scan; dispara apenas quando `vulns > 0` ou `js_secrets > 0`
+- `core/notifier.py`: `_build_tg_nuclei_grouped()` — builder HTML unificado com contagem, description snippet, extracted-results
+- `core/scanner.py`: `run()` rastreia `elapsed_s = time.monotonic()`; passa para `_notify_and_report()`; step 3 agora chama `alert_scan_summary_telegram()`
+- `docs/HUNT3R_SPEC.md`: Seção 7 atualizada (grouping); Seção 13 atualizada (Nuclei scope fixes + stealth URL cap + -tags desativado); Seção 17 adicionada (Redis PubSub Bridge); baseline 364 → 382 testes
+- `docs/STATUS.md`: commits OVERLORD, arquitetura completa, hunt validado VPS DVWA+JuiceShop
+
+
 
 ### `ccd749c` UI/UX completa para novos tools
 - `core/ui.py`: `PIPELINE_TOOLS` 7 → 9 tools (Naabu + URLFinder na ordem correta)

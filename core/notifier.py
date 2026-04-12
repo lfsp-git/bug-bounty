@@ -218,6 +218,37 @@ def _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep=False):
     return html
 
 
+def _build_tg_nuclei_grouped(sev: str, target: str, tid: str, name: str,
+                              matched_list: list, extracted: str,
+                              cve: str, desc: str, is_deep: bool = False) -> str:
+    """Build a grouped Telegram alert: 1 message per (severity, template-id).
+
+    Shows up to 5 matched URLs, description snippet, and first extracted result.
+    """
+    emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡"}.get(sev, "⚪")
+    count = len(matched_list)
+    prefix = "<b>[DEEP-SCAN]</b> " if is_deep else ""
+    count_str = f" · <b>{count} ocorrências</b>" if count > 1 else ""
+
+    lines = [
+        f"{emoji} {prefix}<b>[{sev}]</b> <code>{_tg_escape(tid)}</code>{count_str}",
+        f"🎯 {_tg_escape(target)}",
+    ]
+    if name and name.lower() != tid.lower():
+        lines.append(f"📛 {_tg_escape(name[:80])}")
+    if cve and cve != "N/A":
+        lines.append(f"CVE: <code>{_tg_escape(cve)}</code>")
+    for url in matched_list[:5]:
+        lines.append(f"• <code>{_tg_escape(url[:100])}</code>")
+    if count > 5:
+        lines.append(f"  <i>… e mais {count - 5}</i>")
+    if desc:
+        lines.append(f"📝 {_tg_escape(desc[:160])}")
+    if extracted:
+        lines.append(f"🔎 <code>{_tg_escape(extracted[:120])}</code>")
+    return "\n".join(lines)
+
+
 def _build_dc_nuclei_embed(sev, target, tid, matched, cve):
     """Build Discord embed for vulnerability."""
     color = SEV_COLORS.get(sev, 0x808080)
@@ -242,46 +273,70 @@ class NotificationDispatcher:
 
     @classmethod
     def alert_nuclei_telegram(cls, findings: list, target: str):
-        """Send a list of pre-filtered findings (Medium+/escalated) to Telegram."""
+        """Send a list of pre-filtered findings (Medium+/escalated) to Telegram, grouped by template."""
         tg = NotifierConfig.telegram()
         if not tg or not findings:
             return
+
+        groups: dict = {}
+        escalated_list = []
 
         for d in findings:
             sev = _get_sev(d, "info").upper()
             tid = d.get("template-id", "unknown")
             matched = d.get("matched-at", "")
             cve = d.get("cve-id", "N/A")
+            is_deep = d.get("_deep_scan", False)
             escalated = d.get("_escalated", "")
             report = d.get("_escalation_report", "")
-            is_deep = d.get("_deep_scan", False)
 
-            if sev in ("CRITICAL", "HIGH"):
-                legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
-                    continue
-                html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
-                _tg_post(tg[0], tg[1], html)
-            elif escalated:
-                # Escalated finding with simulated severity
-                sim_sev = d.get("_simulated_severity", "info").upper()
-                prefix = "<b>[DEEP-SCAN]</b> " if is_deep else ""
-                html = (
-                    f"{prefix}[ESCALATED] <b>Trigger: {escalated}</b>\n"
-                    f"Original: {tid} [{sev}]\n"
-                    f"Simulated severity: {sim_sev}\n"
-                    f"Report:\n<pre>{_tg_escape(report)}</pre>\n"
-                )
-                legacy_key = f"tg:escalated:{target}:{escalated}:{tid}"
-                if _is_duplicate_and_record_keys(_dedup_keys("tg:escalated", legacy_key, target, escalated, tid, sim_sev)):
-                    continue
-                _tg_post(tg[0], tg[1], html)
-            elif sev == "MEDIUM":
-                legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
-                    continue
-                html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
-                _tg_post(tg[0], tg[1], html)
+            if escalated:
+                escalated_list.append((d, escalated, report, tid, sev, is_deep))
+                continue
+
+            if sev not in ("CRITICAL", "HIGH", "MEDIUM"):
+                continue
+
+            info = d.get("info", {})
+            name = info.get("name", "")
+            desc = info.get("description", "")
+            extracted_list = d.get("extracted-results", [])
+            extracted = extracted_list[0] if extracted_list else ""
+
+            gk = f"{sev}:{tid}"
+            if gk not in groups:
+                groups[gk] = {"sev": sev, "tid": tid, "name": name, "cve": cve,
+                               "desc": desc, "extracted": extracted, "is_deep": is_deep,
+                               "matched_list": []}
+            if matched and matched not in groups[gk]["matched_list"]:
+                groups[gk]["matched_list"].append(matched)
+
+        # Send grouped vuln messages
+        for g in groups.values():
+            dedup_key = f"tg:nuclei:{target}:{g['sev']}:{g['tid']}"
+            if _is_duplicate_and_record_keys([dedup_key]):
+                continue
+            html = _build_tg_nuclei_grouped(
+                g["sev"], target, g["tid"], g["name"],
+                g["matched_list"], g["extracted"],
+                g["cve"], g["desc"], g["is_deep"],
+            )
+            _tg_post(tg[0], tg[1], html)
+
+        # Send escalated findings individually
+        for (d, escalated, report, tid, sev, is_deep) in escalated_list:
+            sim_sev = d.get("_simulated_severity", "info").upper()
+            prefix = "<b>[DEEP-SCAN]</b> " if is_deep else ""
+            html = (
+                f"{prefix}[ESCALATED] <b>Trigger: {escalated}</b>\n"
+                f"Original: {tid} [{sev}]\n"
+                f"Simulated severity: {sim_sev}\n"
+                f"Report:\n<pre>{_tg_escape(report)}</pre>\n"
+            )
+            legacy_key = f"tg:escalated:{target}:{escalated}:{tid}"
+            if _is_duplicate_and_record_keys(_dedup_keys("tg:escalated", legacy_key, target, escalated, tid, sim_sev)):
+                continue
+            _tg_post(tg[0], tg[1], html)
 
     @classmethod
     def alert_nuclei_discord_batch(cls, findings: list, target: str):
@@ -291,9 +346,11 @@ class NotificationDispatcher:
     @classmethod
     def alert_nuclei(cls, findings_path, target):
         """
-        Parse findings file and route by severity to Telegram only.
-        Critical/High/Medium → Telegram.
-        Info/Low → dropped (no Discord spam).
+        Parse findings file, group by (severity, template-id) and send 1 grouped
+        Telegram message per template-id instead of per finding.
+
+        Critical/High/Medium → Telegram (grouped).
+        Info/Low → dropped.
         """
         tg = NotifierConfig.telegram()
         if not tg:
@@ -301,6 +358,8 @@ class NotificationDispatcher:
         if not os.path.exists(findings_path) or os.path.getsize(findings_path) == 0:
             return
 
+        # group_key → {sev, name, cve, desc, extracted, matched_list, is_deep}
+        groups: dict = {}
         try:
             with open(findings_path, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f:
@@ -320,25 +379,58 @@ class NotificationDispatcher:
                     matched = d.get("matched-at", "")
                     cve = d.get("cve-id", "N/A")
                     is_deep = d.get("_deep_scan", False)
+                    info = d.get("info", {})
+                    name = info.get("name", "")
+                    desc = info.get("description", "")
+                    extracted_list = d.get("extracted-results", [])
+                    extracted = extracted_list[0] if extracted_list else ""
 
-                    legacy_key = f"tg:nuclei:{target}:{sev}:{tid}:{matched[:120]}"
-                    if _is_duplicate_and_record_keys(_dedup_keys("tg:nuclei", legacy_key, target, sev, tid, matched, cve)):
-                        continue
-                    html = _build_tg_nuclei_alert(sev, target, tid, matched, cve, is_deep)
-                    _tg_post(tg[0], tg[1], html)
+                    group_key = f"{sev}:{tid}"
+                    if group_key not in groups:
+                        groups[group_key] = {
+                            "sev": sev, "tid": tid, "name": name,
+                            "cve": cve, "desc": desc, "extracted": extracted,
+                            "is_deep": is_deep, "matched_list": [],
+                        }
+                    if matched and matched not in groups[group_key]["matched_list"]:
+                        groups[group_key]["matched_list"].append(matched)
+
         except Exception as e:
-            logging.error(f"Notifier Nuclei error: {e}")
+            logging.error(f"Notifier Nuclei read error: {e}")
+            return
+
+        # Send one message per group (dedup by template+target)
+        sent = 0
+        for g in groups.values():
+            dedup_key = f"tg:nuclei:{target}:{g['sev']}:{g['tid']}"
+            if _is_duplicate_and_record_keys([dedup_key]):
+                continue
+            html = _build_tg_nuclei_grouped(
+                g["sev"], target, g["tid"], g["name"],
+                g["matched_list"], g["extracted"],
+                g["cve"], g["desc"], g["is_deep"],
+            )
+            _tg_post(tg[0], tg[1], html)
+            sent += 1
+        if sent:
+            ui_log("NOTIFIER", f"Nuclei: {sent} alertas agrupados → Telegram", Colors.SUCCESS)
 
     @classmethod
     def alert_js_secrets(cls, js_file, target):
-        """Route JS secrets: Critical/High/Medium → Telegram only. Low → dropped."""
+        """Route JS secrets grouped by type → 1 Telegram message per secret type.
+
+        Sends a compact card per type (e.g. private_key, password, jwt) showing
+        count, first sample source, and first value. generic_url_param is only
+        sent when it probes as an active endpoint.
+        """
         tg = NotifierConfig.telegram()
         if not tg:
             return
         if not os.path.exists(js_file) or os.path.getsize(js_file) == 0:
             return
 
-        tg_count = 0
+        # group_key (type:severity) → {stype, severity, sources, vals, count}
+        groups: dict = {}
         try:
             with open(js_file, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -355,7 +447,6 @@ class NotificationDispatcher:
                     val = d.get("value", "")[:80]
                     severity = d.get("severity", "low").upper()
 
-                    # Probe generic_url_params before notifying
                     if stype == "generic_url_param":
                         probe = _probe_generic_url(val)
                         if probe == "skip":
@@ -363,28 +454,109 @@ class NotificationDispatcher:
                         severity = "HIGH"
 
                     if severity not in ("CRITICAL", "HIGH", "MEDIUM"):
-                        continue  # drop low/info secrets
-
-                    emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡"}.get(severity, "🟣")
-                    html = (
-                        f"{emoji} <b>[JS SECRET] [{severity}] {target}</b>\n"
-                        f"Type: <code>{_tg_escape(stype)}</code>\n"
-                        f"Source: <code>{_tg_escape(source[:80])}</code>\n"
-                        f"Value: <code>{_tg_escape(val)}</code>\n"
-                    )
-                    legacy_key = f"tg:js:{target}:{severity}:{stype}:{source[:120]}:{val[:80]}"
-                    if _is_duplicate_and_record_keys(_dedup_keys("tg:js", legacy_key, target, severity, stype, source, val)):
                         continue
-                    _tg_post(tg[0], tg[1], html)
-                    tg_count += 1
 
-                    if tg_count >= 30:
-                        break  # Prevent flood
+                    gk = f"{stype}:{severity}"
+                    if gk not in groups:
+                        groups[gk] = {"stype": stype, "severity": severity,
+                                      "sources": [], "vals": [], "count": 0}
+                    groups[gk]["count"] += 1
+                    if len(groups[gk]["sources"]) < 3:
+                        groups[gk]["sources"].append(source)
+                    if len(groups[gk]["vals"]) < 2:
+                        groups[gk]["vals"].append(val)
+
         except Exception as e:
             logging.error(f"Notifier JS alert error: {e}")
+            return
 
-        if tg_count > 0:
-            ui_log("NOTIFIER", f"JS secrets: {tg_count} → Telegram", Colors.SUCCESS)
+        sent = 0
+        for g in groups.values():
+            severity = g["severity"]
+            stype = g["stype"]
+            dedup_key = f"tg:js:{target}:{severity}:{stype}"
+            if _is_duplicate_and_record_keys([dedup_key]):
+                continue
+
+            emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡"}.get(severity, "🟣")
+            count = g["count"]
+            count_str = f" · <b>{count} ocorrências</b>" if count > 1 else ""
+            lines = [
+                f"{emoji} <b>[JS SECRET] [{severity}]</b> <code>{_tg_escape(stype)}</code>{count_str}",
+                f"🎯 {_tg_escape(target)}",
+            ]
+            for src in g["sources"][:3]:
+                lines.append(f"• <code>{_tg_escape(src[:100])}</code>")
+            if count > 3:
+                lines.append(f"  <i>… e mais {count - 3}</i>")
+            for v in g["vals"][:2]:
+                lines.append(f"🔑 <code>{_tg_escape(v[:80])}</code>")
+            _tg_post(tg[0], tg[1], "\n".join(lines))
+            sent += 1
+
+        if sent:
+            total = sum(g["count"] for g in groups.values())
+            ui_log("NOTIFIER", f"JS secrets: {total} ({sent} tipos) → Telegram", Colors.SUCCESS)
+
+    @classmethod
+    def alert_scan_summary_telegram(cls, target: str, platform: str, results: dict,
+                                    elapsed_s: float = 0.0):
+        """Send compact scan summary card to Telegram at mission end.
+
+        Complements Discord summary with a lightweight Telegram version, using
+        the same data dict from ``results``.
+        """
+        tg = NotifierConfig.telegram()
+        if not tg:
+            return
+
+        sev = results.get("severity_counts", {})
+        crits = sev.get("critical", 0)
+        highs = sev.get("high", 0)
+        meds = sev.get("medium", 0)
+        secs = results.get("js_secrets", 0)
+        vulns = crits + highs + meds
+        eps = results.get("endpoints", 0)
+        errors = len(results.get("errors", []))
+
+        if vulns == 0 and secs == 0:
+            return  # Don't spam on clean scans
+
+        # Status header
+        if crits:
+            icon = "🔴"
+        elif highs:
+            icon = "🟠"
+        elif meds or secs:
+            icon = "🟡"
+        else:
+            icon = "✅"
+
+        vuln_parts = []
+        if crits: vuln_parts.append(f"🔴 {crits} Critical")
+        if highs: vuln_parts.append(f"🟠 {highs} High")
+        if meds:  vuln_parts.append(f"🟡 {meds} Medium")
+
+        elapsed_str = f"{int(elapsed_s // 60)}m{int(elapsed_s % 60)}s" if elapsed_s else ""
+        lines = [
+            f"{icon} <b>Hunt3r — {_tg_escape(target)}</b>",
+            f"🐛 {' · '.join(vuln_parts) if vuln_parts else '0 vulnerabilidades'}",
+        ]
+        if secs:
+            lines.append(f"🟣 {secs} JS Secrets")
+        if eps:
+            lines.append(f"🔗 {eps} endpoints")
+        if errors:
+            lines.append(f"⚠️ {errors} erros de fase")
+        if elapsed_str:
+            lines.append(f"⏱ Duração: {elapsed_str}")
+        if platform and platform not in ("unknown", ""):
+            lines.append(f"📋 Plataforma: {_tg_escape(platform.upper())}")
+
+        dedup_key = f"tg:summary:{target}:{crits}:{highs}:{meds}"
+        if _is_duplicate_and_record_keys([dedup_key]):
+            return
+        _tg_post(tg[0], tg[1], "\n".join(lines))
 
     @classmethod
     def alert_scan_complete(cls, target: str, platform: str, results: dict):
