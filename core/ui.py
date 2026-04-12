@@ -376,6 +376,7 @@ def ui_log(module: str, message: str, color=None):
     elif any(k in msg_u for k in ("WATCHDOG", "MISSION", "MODE")):
         level_color = "cyan"
     _activity_push(worker_id, module, message, level_color)
+    _bridge_publish("ui_log", module=module, message=message)
     if not _WATCHDOG_MODE:
         icon = ICONS.get(module.upper(), ICONS.get(module, "●"))
         ts = datetime.now().strftime("%H:%M:%S")
