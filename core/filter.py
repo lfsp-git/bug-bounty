@@ -13,6 +13,17 @@ class FalsePositiveKiller:
     PH=re.compile(r'(example\.com|changeme|test[_-]?token|placeholder|\[.*\])',re.I)
     NULL_VAL=re.compile(r'(?:null|undefined|nil|none|\{\}|\[\]|""|\'\'|<\?\w+\?>|{{.*}})',re.I)
 
+    # SSRF findings that have no OOB confirmation are almost certainly reflections.
+    # Confirmed SSRF produces AWS/GCP/Azure metadata content in extracted-results.
+    _SSRF_OOB_EVIDENCE = re.compile(
+        r'ami-[0-9a-f]{8}|instance.?id|local.?hostname|ec2metadata|'
+        r'placement/region|iam/security-credentials|'
+        r'"instanceId"|"privateIp"|"region"|metadata\.google\.internal',
+        re.IGNORECASE,
+    )
+    # Template IDs that require OOB/network confirmation to avoid reflection FPs
+    _SSRF_TEMPLATE_IDS = re.compile(r'ssrf', re.IGNORECASE)
+
     @classmethod
     def sanitize_findings(cls, findings_file):
         """Remove false positives from findings file using structured filter chain."""
@@ -79,7 +90,17 @@ class FalsePositiveKiller:
         if any(keyword in template_id for keyword in cls.FP_KW):
             return "FP"
         
-        # Filter 3: WAF fingerprints (false positives)
+        # Filter 3: SSRF without OOB/network confirmation → reflection FP
+        # Real SSRF leaves cloud-metadata markers in extracted-results (ami-id,
+        # instance-id, local-hostname, GCP metadata keys). Absence = the injected
+        # URL was reflected in the error page body, not actually fetched server-side.
+        if cls._SSRF_TEMPLATE_IDS.search(template_id):
+            oob_confirmed = any(oob in template_url for oob in cls.OOB)
+            extracted_has_evidence = cls._SSRF_OOB_EVIDENCE.search(extracted_str) if extracted_str else False
+            if not oob_confirmed and not extracted_has_evidence:
+                return "SSRF-NoOOB"
+
+        # Filter 4: WAF fingerprints (false positives)
         if extracted_results and cls.WAF.search(extracted_str):
             return "WAF"
         

@@ -42,6 +42,22 @@ class JSHunter:
         'outgrow.co', 'outgrow.com',
         'countrystatecity.in',
         'airtable.com/v0.3', 'airtable.com/developers',
+        # Web3 / blockchain infrastructure — high-volume JS noise, never secrets
+        'infura.io', 'alchemy.com', 'moralis.io', 'quicknode.com',
+        'ankr.com', 'chainstack.com', 'web3.storage', 'nft.storage',
+        'ipfs.io', 'pinata.cloud', 'etherscan.io', 'bscscan.com',
+        'polygonscan.com', 'ethers.io', 'web3js.readthedocs.io',
+        'ethereum.org', 'hardhat.org', 'trufflesuite.com',
+        'openzeppelin.com', 'soliditylang.org',
+        # Observability / telemetry SDKs — inject patterns but not secrets
+        'datadog.com', 'datadoghq.com', 'newrelic.com', 'dynatrace.com',
+        'elastic.co', 'logstash', 'kibana',
+        'honeycomb.io', 'lightstep.com', 'opentelemetry.io',
+        # Payment / fintech boilerplate
+        'plaid.com', 'braintreepayments.com', 'adyen.com', 'paypal.com',
+        # Map / geocoding SDKs
+        'maps.googleapis.com', 'mapbox.com', 'leafletjs.com',
+        'openstreetmap.org',
     ]
 
     PATTERNS = {
@@ -113,7 +129,17 @@ class JSHunter:
         r'google\.com|googleapis\.com|sentry\.io|rollbar\.com|'
         r'intercom\.io|cloudfront\.net|azureedge\.net|'
         r'outgrow\.co|outgrow\.com|countrystatecity\.in|'
-        r'airtable\.com/v0|airtable\.com/developers)',
+        r'airtable\.com/v0|airtable\.com/developers|'
+        # Web3 / blockchain
+        r'infura\.io|alchemy\.com|moralis\.io|quicknode\.com|'
+        r'ankr\.com|chainstack\.com|web3\.storage|nft\.storage|'
+        r'ipfs\.io|pinata\.cloud|etherscan\.io|bscscan\.com|'
+        r'polygonscan\.com|ethereum\.org|openzeppelin\.com|'
+        # Observability
+        r'datadog\.com|datadoghq\.com|newrelic\.com|dynatrace\.com|'
+        r'honeycomb\.io|lightstep\.com|opentelemetry\.io|'
+        # Maps
+        r'maps\.googleapis\.com|mapbox\.com|openstreetmap\.org)',
         re.IGNORECASE,
     )
 

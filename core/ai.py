@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import logging
 from typing import Any, Dict, List, Optional
@@ -74,21 +75,50 @@ class AIClient:
             logger.error(f"Failed to fetch models: {e}")
         return []
 
+    # OpenRouter hard limit for most models; stay safely under to avoid 400s
+    _MAX_PROMPT_CHARS = 12_000
+
+    @staticmethod
+    def _sanitize_prompt(prompt: str, max_chars: int = _MAX_PROMPT_CHARS) -> str:
+        """Sanitize prompt before sending to OpenRouter.
+
+        - Remove non-printable / control characters (causes 400 from some models)
+        - Truncate to max_chars so the total token count stays within model context
+        """
+        # Strip control chars except ordinary whitespace (\t \n \r)
+        cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', prompt)
+        if len(cleaned) > max_chars:
+            cleaned = cleaned[:max_chars] + "\n...[truncated]"
+        return cleaned
+
     def complete(self, prompt: str, max_tokens: int = 500) -> str:
         if not self.api_key or not self.selected_model:
             return "[AI Offline]"
+        sanitized = self._sanitize_prompt(prompt)
+        payload = {
+            "model": self.selected_model,
+            "messages": [{"role": "user", "content": sanitized}],
+            "max_tokens": max_tokens,
+        }
         try:
             r = self.session.post(
                 f"{self.base_url}/chat/completions",
-                json={
-                    "model": self.selected_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_tokens,
-                },
+                json=payload,
                 timeout=60,
             )
             if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"]
+                try:
+                    return r.json()["choices"][0]["message"]["content"]
+                except (KeyError, IndexError, ValueError) as e:
+                    logger.error(f"AI response parse error: {e} — body: {r.text[:200]}")
+                    return f"[Error: bad response shape]"
+            # Log actionable detail for 400 Bad Request (most common misconfiguration)
+            err_detail = ""
+            try:
+                err_detail = r.json().get("error", {}).get("message", r.text[:150])
+            except (ValueError, AttributeError):
+                err_detail = r.text[:150]
+            logger.warning(f"AI API error {r.status_code}: {err_detail}")
             return f"[API Error {r.status_code}]"
         except requests.RequestException as e:
             logger.error(f"AI completion failed: {e}")
