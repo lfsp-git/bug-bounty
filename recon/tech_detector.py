@@ -316,6 +316,73 @@ class TechDetector:
         return tag_string, final_tags
 
     @classmethod
+    def get_nuclei_template_dirs(cls, tech_stack: "Set[str]") -> "List[str]":
+        """Map detected tech stack to specific nuclei-templates subdirectories.
+
+        Restricting Nuclei to relevant template dirs (instead of all templates)
+        reduces the number of HTTP requests sent, lowering WAF detection risk
+        and cutting scan time significantly.
+
+        Returns a list of absolute paths that EXIST on disk.  If none exist
+        (nuclei-templates not installed / different layout), returns [] so the
+        caller falls back to the standard full-library scan.
+        """
+        import os as _os
+        base = _os.path.expanduser("~/nuclei-templates")
+        if not _os.path.isdir(base):
+            return []
+
+        # Core dirs: always include regardless of tech detection.
+        core_dirs = [
+            "http/misconfiguration",
+            "http/exposures",
+            "http/takeovers",
+            "http/default-logins",
+            "http/cves",
+        ]
+
+        # Tech → relevant template sub-paths (tried in order; first existing wins per tech).
+        TECH_DIR_MAP: "dict[str, List[str]]" = {
+            "wordpress": ["http/cves/wordpress", "http/technologies/wordpress"],
+            "drupal":    ["http/cves/drupal"],
+            "joomla":    ["http/cves/joomla"],
+            "php":       ["http/cves/php"],
+            "laravel":   ["http/cves/laravel"],
+            "django":    ["http/cves/django"],
+            "rails":     ["http/cves/rails"],
+            "spring":    ["http/cves/spring", "http/cves/java"],
+            "aspnet":    ["http/cves/aspx", "http/cves/iis"],
+            "iis":       ["http/cves/iis", "http/misconfiguration/iis"],
+            "apache":    ["http/cves/apache", "http/misconfiguration/apache"],
+            "nginx":     ["http/cves/nginx"],
+            "node":      ["http/cves/nodejs"],
+            "graphql":   ["http/graphql", "http/cves/graphql"],
+            "rest":      ["http/cves/api"],
+            "jwt":       ["http/exposures"],
+            "oauth":     ["http/exposures"],
+        }
+
+        dirs: "List[str]" = list(core_dirs)
+        for tech in tech_stack:
+            for candidate in TECH_DIR_MAP.get(tech, []):
+                full = _os.path.join(base, candidate)
+                if _os.path.isdir(full):
+                    dirs.append(candidate)
+                    break  # Only add first existing path per tech
+
+        # Deduplicate and return only paths that exist on disk.
+        seen: "set[str]" = set()
+        result: "List[str]" = []
+        for d in dirs:
+            if d not in seen:
+                seen.add(d)
+                full = _os.path.join(base, d)
+                if _os.path.isdir(full):
+                    result.append(full)
+
+        return result
+
+    @classmethod
     def get_tech_summary(cls, tech_stack: Set[str]) -> str:
         """Human-readable tech stack summary"""
         if not tech_stack:

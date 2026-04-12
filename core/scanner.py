@@ -586,6 +586,8 @@ class MissionRunner:
         
         # Smart Nuclei Tag Detection: Extract tech from Katana/HTTPX and select appropriate tags
         nuclei_tags = self._get_smart_nuclei_tags(recon_input, katana_file)
+        # Stealth optimization: resolve tech-specific template dirs to narrow scan scope.
+        nuclei_template_dirs = self._get_smart_nuclei_template_dirs(recon_input, katana_file)
         
         # Nuclei: scanning de vulnerabilidades com URLs combinadas (HTTPX + Katana + URLFinder)
         findings_file = paths["fin"]
@@ -603,7 +605,8 @@ class MissionRunner:
         ok = _run_with_progress("Nuclei", lambda: run_nuclei(
             nuclei_input, findings_file, tags=nuclei_tags,
             rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback,
-            custom_templates=self.custom_template_paths, timeout_override=timeout_override),
+            custom_templates=self.custom_template_paths, timeout_override=timeout_override,
+            template_dirs=nuclei_template_dirs),
             extra_stats_fn=_nuclei_extra_stats)
         if ok:
             _tool_done("Nuclei", "vulns", findings_file)
@@ -799,6 +802,35 @@ class MissionRunner:
             "sqli,xss,ssrf,rce,lfi,xxe,idor,ssti,cors,open-redirect,"
             "info-disclosure,file-upload,redirect"
         )
+
+    def _get_smart_nuclei_template_dirs(self, httpx_file: str, katana_file: str) -> List[str]:
+        """Return tech-specific nuclei-templates subdirectory paths for this target.
+
+        Detects the tech stack from HTTPX + Katana output (same URL corpus used
+        for tag detection), then delegates to TechDetector.get_nuclei_template_dirs()
+        which maps tech → existing template dirs on disk.
+
+        Returns [] when detection fails or no dirs exist — callers fall back to
+        the full-library scan in that case.
+        """
+        try:
+            urls = _safe_read_lines(httpx_file) + _safe_read_lines(katana_file)
+            if not urls:
+                return []
+            tech_stack = TechDetector.detect_from_urls(urls)
+            if not tech_stack:
+                return []
+            dirs = TechDetector.get_nuclei_template_dirs(tech_stack)
+            if dirs:
+                ui_log(
+                    "TECH",
+                    f"Stealth: {len(dirs)} template dirs for {TechDetector.get_tech_summary(tech_stack)}",
+                    Colors.DIM,
+                )
+            return dirs
+        except Exception as e:
+            logging.warning(f"Template dir detection failed: {e}")
+            return []
 
     def _notify_and_report(self, paths: dict, results: dict):
         """Send notifications and generate bug bounty report after scan."""

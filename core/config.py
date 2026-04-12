@@ -255,3 +255,85 @@ def validate_and_extract_domain(input_str: str) -> str:
 ML_FILTER_ENABLED = True                    # Enable ML-based FP filtering
 ML_CONFIDENCE_THRESHOLD = 0.5               # Probability threshold for FP (0-1)
 ML_MODEL_PATH = "/home/leonardofsp/bug-bounty/models/fp_filter_v1.pkl"
+
+# ---------------------------------------------------------------------------
+# Stealth / WAF Evasion  (v1.1-OVERLORD)
+# ---------------------------------------------------------------------------
+import random as _rng  # noqa: E402 — placed here to avoid circular import at top
+
+# Real browser User-Agent pool for httpx/katana request rotation.
+# Sourced from top browser market-share data (April 2025).
+STEALTH_USER_AGENTS: List[str] = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 OPR/110.0.0.0",
+    "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPad; CPU OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+]
+
+# Gaussian jitter base delay (seconds) per tool.
+# Spread is controlled by JITTER_SIGMA_RATIO — default 35% of base.
+JITTER_BASE: dict = {
+    "httpx":   1.5,
+    "katana":  2.0,
+    "nuclei":  1.0,
+    "default": 1.0,
+}
+
+JITTER_SIGMA_RATIO: float = float(os.getenv("HUNT3R_JITTER_SIGMA", "0.35"))
+
+# Master switch — set HUNT3R_STEALTH=false to disable all stealth delays.
+STEALTH_ENABLED: bool = os.getenv("HUNT3R_STEALTH", "true").lower() in ("1", "true", "yes")
+
+
+def jitter_sleep(tool: str = "default", base: float = 1.0, sigma_ratio: float | None = None) -> None:
+    """Gaussian jitter sleep between tool launches to evade WAF rate-pattern detection.
+
+    Draws delay from N(base, sigma) where sigma = base * JITTER_SIGMA_RATIO.
+    Negative draws are clamped to 0.
+
+    Args:
+        tool:        Tool name key for per-tool base lookup (e.g. "httpx", "katana").
+        base:        Fallback base delay when tool key is not in JITTER_BASE.
+        sigma_ratio: Override JITTER_SIGMA_RATIO for this call.
+    """
+    if not STEALTH_ENABLED:
+        return
+    _base = JITTER_BASE.get(tool.lower(), base)
+    _sigma = _base * (sigma_ratio if sigma_ratio is not None else JITTER_SIGMA_RATIO)
+    delay = max(0.0, _rng.gauss(_base, _sigma))
+    if delay > 0.05:
+        time.sleep(delay)
+
+
+def get_random_ua() -> str:
+    """Return a random real browser User-Agent from the stealth pool."""
+    return _rng.choice(STEALTH_USER_AGENTS)
+
+
+def get_random_proxy() -> str | None:
+    """Return a random proxy from HUNT3R_PROXIES env (comma-separated list), or None.
+
+    Expected format: ``http://host:port`` or ``socks5://host:port``.
+    Example: ``HUNT3R_PROXIES=http://127.0.0.1:8080,socks5://10.0.0.1:1080``
+    """
+    raw = os.getenv("HUNT3R_PROXIES", "").strip()
+    if not raw:
+        return None
+    pool = [p.strip() for p in raw.split(",") if p.strip()]
+    return _rng.choice(pool) if pool else None

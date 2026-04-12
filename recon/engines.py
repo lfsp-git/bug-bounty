@@ -2,7 +2,10 @@ import os, subprocess, shlex, re, io, shutil, sys, threading, json, time
 import logging
 from typing import List
 from core.ui import ui_log, Colors
-from core.config import get_tool_timeout, NUCLEI_RATE_LIMIT, NUCLEI_CONCURRENCY  # Centralized config
+from core.config import (
+    get_tool_timeout, NUCLEI_RATE_LIMIT, NUCLEI_CONCURRENCY,
+    jitter_sleep, get_random_ua, get_random_proxy,
+)  # Centralized config
 from recon.tool_discovery import find_tool
 
 PDTM = os.environ.get("HUNT3R_PDTM_PATH", os.path.expanduser("~/.pdtm/go/bin/"))
@@ -172,6 +175,9 @@ def run_uncover(domains, output_file):
     run_cmd(cmd, "Uncover", output_file)
 
 def run_httpx(input_file, output_file, rate_limit=100):
+    # Gaussian jitter before launching to break WAF rate fingerprints.
+    jitter_sleep("httpx")
+
     # Adaptive timeout: base 180s + 0.5s per host above 100, max 900s
     host_count = 0
     if os.path.exists(input_file):
@@ -181,8 +187,18 @@ def run_httpx(input_file, output_file, rate_limit=100):
         except OSError:
             pass
     adaptive_timeout = min(180 + max(0, host_count - 100) // 2, 900)
-    # -random-agent is default true; -ua is not a valid flag (caused 0-second silent exit)
-    run_cmd([find_tool("httpx"), "-l", input_file, "-o", output_file, "-silent", "-rate-limit", str(rate_limit)], "HTTPX", output_file, timeout_override=adaptive_timeout)
+
+    cmd = [find_tool("httpx"), "-l", input_file, "-o", output_file,
+           "-silent", "-rate-limit", str(rate_limit)]
+
+    # Stealth: rotate User-Agent and optionally route through proxy.
+    ua = get_random_ua()
+    cmd.extend(["-H", f"User-Agent: {ua}"])
+    proxy = get_random_proxy()
+    if proxy:
+        cmd.extend(["-proxy", proxy])
+
+    run_cmd(cmd, "HTTPX", output_file, timeout_override=adaptive_timeout)
 
 def run_katana_surgical(input_file, output_file, rate_limit=100):
     """Crawling com URLs do HTTPX.
@@ -191,6 +207,9 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
     máx 900s — evita timeout em alvos grandes sem travar para sempre.
     -js-crawl: extrai endpoints embutidos em JS (Angular/React SPAs).
     """
+    # Gaussian jitter before launching to break WAF rate fingerprints.
+    jitter_sleep("katana")
+
     endpoint_count = 0
     if os.path.exists(input_file):
         try:
@@ -206,6 +225,14 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
     cmd = [find_tool("katana"), "-list", input_file, "-o", output_file, "-silent",
            f"-rate-limit={rate_limit}", "-timeout", "15", "-depth", "3",
            "-js-crawl", "-crawl-duration", str(adaptive_timeout)]
+
+    # Stealth: rotate User-Agent and optionally route through proxy.
+    ua = get_random_ua()
+    cmd.extend(["-H", f"User-Agent: {ua}"])
+    proxy = get_random_proxy()
+    if proxy:
+        cmd.extend(["-proxy", proxy])
+
     run_cmd(cmd, "Katana", output_file)
 
 
@@ -254,13 +281,22 @@ def run_nuclei(
     progress_callback=None,
     custom_templates=None,
     timeout_override=None,
+    template_dirs=None,
 ):
     """Run Nuclei with -stats -sj for real-time progress via stderr streaming.
     
     Uses Popen instead of run_cmd to parse JSON stats from stderr in real-time.
     No -silent: allows -stats -sj to output progress data.
     Timeout: controlled by config (default 3600s — vulns at any cost).
-    custom_templates: list of template file paths or directories to include
+
+    Args:
+        template_dirs: List of absolute paths to specific nuclei-templates
+            subdirectories derived from tech detection.  When provided, Nuclei
+            is restricted to those directories (+ -tags filter), making the
+            scan stealthy and fast.  When empty/None, all templates are scanned
+            (standard behaviour, filtered by -tags only).
+        custom_templates: List of user-defined template files/dirs to include
+            in addition to the selected scope.
     """
     if rate_limit is None:
         rate_limit = NUCLEI_RATE_LIMIT
@@ -306,8 +342,21 @@ def run_nuclei(
     cmd = [exe, "-l", input_file, "-o", output_file,
            "-duc", "-j", "-stats", "-sj", "-rl", str(rate_limit), "-c", str(NUCLEI_CONCURRENCY),
            "-timeout", "5", "-severity", "critical,high,medium"]
-    if tags:
-        cmd.extend(["-tags", tags])
+
+    # Tech-specific template dirs: restrict scan to relevant subdirectories.
+    # Dirs that do not exist on disk are silently skipped (no crash).
+    valid_tdirs = [d for d in (template_dirs or []) if os.path.isdir(d)]
+    if valid_tdirs:
+        for tdir in valid_tdirs:
+            cmd.extend(["-t", tdir])
+        if tags:
+            cmd.extend(["-tags", tags])
+        ui_log("NUCLEI", f"Stealth: {len(valid_tdirs)} template dirs, tags={tags or 'all'}", Colors.DIM)
+    else:
+        # Fallback: full template library, filtered by tag (current default).
+        if tags:
+            cmd.extend(["-tags", tags])
+
     if custom_templates:
         # -t: template files or directories to run (not -td which means template-display)
         for template_path in custom_templates:
