@@ -350,8 +350,6 @@ def main() -> None:
         return
 
     # Interactive menu
-    ui_clear()
-    ui_banner()
     init_seq()
     ai = init_ai()
 

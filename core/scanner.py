@@ -47,6 +47,11 @@ _CACHE_TIMES = "recon/tool_times.json"
 _RECORD_TOOL_TIMES = True  # Can be disabled in watchdog mode to prevent cache modification
 _NUCLEI_TIMEOUT_LIVE_HOST_THRESHOLD = 400
 _NUCLEI_TIMEOUT_LARGE_SCAN = 5400
+# When stealth dir mode is active (valid_tdirs non-empty), template dirs contain
+# HOST-level checks (misconfiguration, exposures, takeovers, default-logins).
+# Running them against thousands of crawled URLs creates duplicate checks and
+# explodes request counts. Cap: use HTTPX live hosts when URL count exceeds this.
+_NUCLEI_STEALTH_URL_THRESHOLD = int(os.getenv("NUCLEI_STEALTH_URL_THRESHOLD", "100"))
 
 def _get_worker_id() -> str:
     """Get current worker ID from thread-local (set by watchdog.py)."""
@@ -100,7 +105,7 @@ def _run_with_progress(label, fn, live_tail_pipe=None, extra_stats_fn=None):
             extra = extra_stats_fn() if extra_stats_fn else ""
             ui_update_status(label, f"{chars[idx % 4]} {int(elapsed)}s{eta}{extra}")
             idx += 1
-            time.sleep(0.2)
+            time.sleep(1.0)
 
     t = threading.Thread(target=_spinner); t.start()
     success = False
@@ -619,11 +624,30 @@ class MissionRunner:
         nuclei_tags = self._get_smart_nuclei_tags(recon_input, katana_file)
         # Stealth optimization: resolve tech-specific template dirs to narrow scan scope.
         nuclei_template_dirs = self._get_smart_nuclei_template_dirs(recon_input, katana_file)
-        
+
         # Nuclei: scanning de vulnerabilidades com URLs combinadas (HTTPX + Katana + URLFinder)
         findings_file = paths["fin"]
         limiter.wait_and_record(self.target.get('handle', 'unknown'))
         live_inputs = count_lines(nuclei_input)
+
+        # Stealth dir mode: template dirs contain HOST-level checks (misconfiguration,
+        # exposures, takeovers, default-logins). Running against thousands of crawled
+        # URLs duplicates those checks per URL and explodes request counts.
+        # Cap: when dirs are active and URL count exceeds threshold, use HTTPX live
+        # hosts file (3 endpoints) instead — same findings, 99%+ fewer requests.
+        nuclei_input_effective = nuclei_input
+        if nuclei_template_dirs and live_inputs > _NUCLEI_STEALTH_URL_THRESHOLD:
+            host_count = count_lines(recon_input)
+            if host_count > 0:
+                nuclei_input_effective = recon_input
+                ui_log(
+                    "NUCLEI",
+                    f"Stealth dir mode: {host_count} live hosts "
+                    f"(skipping {live_inputs} crawled URLs — dirs are host-level checks)",
+                    Colors.DIM,
+                )
+                live_inputs = host_count
+
         timeout_override = None
         if live_inputs >= _NUCLEI_TIMEOUT_LIVE_HOST_THRESHOLD:
             timeout_override = _NUCLEI_TIMEOUT_LARGE_SCAN
@@ -634,7 +658,7 @@ class MissionRunner:
             )
         _tool_start("Nuclei", input_count=live_inputs)
         ok = _run_with_progress("Nuclei", lambda: run_nuclei(
-            nuclei_input, findings_file, tags=nuclei_tags,
+            nuclei_input_effective, findings_file, tags=nuclei_tags,
             rate_limit=NUCLEI_RATE_LIMIT, progress_callback=_nuclei_progress_callback,
             custom_templates=self.custom_template_paths, timeout_override=timeout_override,
             template_dirs=nuclei_template_dirs),
