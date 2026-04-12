@@ -140,6 +140,35 @@ def _empty_worker(wid: str) -> Dict:
 _workers: Dict[str, Dict] = {k: _empty_worker(k) for k in _WORKER_SLOTS}
 _workers_lock = threading.RLock()
 
+# ─────────────────────────────────────────────────────────────
+# Redis PubSub bridge (optional — Celery worker mode only)
+# ─────────────────────────────────────────────────────────────
+# Set by core.celery_app.scan_target_task before running a mission.
+# None in watchdog process and single-scan mode (local path unchanged).
+_bridge_publisher: Optional[Any] = None
+_bridge_lock = threading.Lock()
+
+
+def set_ui_bridge_publisher(publisher) -> None:
+    """Install (or remove) a UIEventPublisher for Celery worker mode.
+
+    Must be called with a UIEventPublisher instance before start_mission()
+    and with None after the mission returns so the object is not leaked
+    across task retries.
+    """
+    global _bridge_publisher
+    with _bridge_lock:
+        _bridge_publisher = publisher
+
+
+def _bridge_publish(event_type: str, **kwargs) -> None:
+    """Publish a UI event if a bridge publisher is installed (no-op otherwise)."""
+    with _bridge_lock:
+        pub = _bridge_publisher
+    if pub is not None:
+        pub.publish(event_type, **kwargs)
+
+
 # Activity log (rolling, for display + file)
 _activity: deque = deque(maxlen=300)
 _activity_lock = threading.Lock()
@@ -185,6 +214,7 @@ def ui_worker_register(worker_id: str, target: str, idx: int = 0, total: int = 0
                   'total': total, 'start_time': time.time()})
         _workers[worker_id] = w
     _activity_push(worker_id, "MISSION", f"▶ {target} [{idx}/{total}]", "cyan")
+    _bridge_publish("worker_register", worker_id=worker_id, target=target, idx=idx, total=total)
 
 def ui_worker_done(worker_id: str, results: Dict):
     """Mark worker as done after scan completes."""
@@ -209,6 +239,7 @@ def ui_worker_done(worker_id: str, results: Dict):
     global _total_scanned
     with _stats_lock:
         _total_scanned += 1
+    _bridge_publish("worker_done", worker_id=worker_id, results=results)
 
 def ui_worker_tool_started(worker_id: str, tool: str, input_count: int = 0, eta: float = 0.0):
     now = time.time()
@@ -219,6 +250,7 @@ def ui_worker_tool_started(worker_id: str, tool: str, input_count: int = 0, eta:
         _workers[worker_id]['tools'][tool].update(
             {'status': 'running', 'start_time': now, 'eta': eta, 'count': input_count})
     _activity_push(worker_id, tool, f"▶ {tool}  ({input_count} inputs)", "yellow")
+    _bridge_publish("tool_started", worker_id=worker_id, tool=tool, input_count=input_count, eta=eta)
 
 def ui_worker_tool_finished(worker_id: str, tool: str, count: int = 0, elapsed: float = 0.0):
     with _workers_lock:
@@ -236,6 +268,7 @@ def ui_worker_tool_finished(worker_id: str, tool: str, count: int = 0, elapsed: 
             w['metrics'][_METRIC[tool]] = count
     color = "bold green" if count > 0 else "green"
     _activity_push(worker_id, tool, f"✓ {tool}  {count} results  ({int(elapsed)}s)", color)
+    _bridge_publish("tool_finished", worker_id=worker_id, tool=tool, count=count, elapsed=elapsed)
 
 def ui_worker_tool_cached(worker_id: str, tool: str, count: int = 0):
     with _workers_lock:
@@ -246,6 +279,7 @@ def ui_worker_tool_cached(worker_id: str, tool: str, count: int = 0):
         if w['current_tool'] == tool:
             w['current_tool'] = None
     _activity_push(worker_id, tool, f"◈ {tool}  {count} (cache hit)", "cyan")
+    _bridge_publish("tool_cached", worker_id=worker_id, tool=tool, count=count)
 
 def ui_worker_tool_error(worker_id: str, tool: str, error: str = ""):
     with _workers_lock:
@@ -256,12 +290,14 @@ def ui_worker_tool_error(worker_id: str, tool: str, error: str = ""):
         if w['current_tool'] == tool:
             w['current_tool'] = None
     _activity_push(worker_id, tool, f"✗ {tool}  {error[:80]}", "red")
+    _bridge_publish("tool_error", worker_id=worker_id, tool=tool, error=error[:80])
 
 def ui_worker_nuclei_update(worker_id: str, done: int, total: int, rps: float, matched: int):
     with _workers_lock:
         if worker_id in _workers:
             _workers[worker_id]['nuclei_req'] = {
                 'done': done, 'total': total, 'rps': rps, 'matched': matched}
+    _bridge_publish("nuclei_update", worker_id=worker_id, done=done, total=total, rps=rps, matched=matched)
 
 def ui_cycle_started():
     global _cycle_count
@@ -873,4 +909,5 @@ __all__ = [
     'ui_worker_tool_started', 'ui_worker_tool_finished', 'ui_worker_tool_cached',
     'ui_worker_tool_error', 'ui_worker_nuclei_update', 'ui_cycle_started',
     'ui_interrupt_requested', 'set_worker_context', '_get_current_worker',
+    'set_ui_bridge_publisher',
 ]

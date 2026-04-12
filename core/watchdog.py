@@ -353,6 +353,11 @@ def _dispatch_targets_celery(wildcards: list) -> dict:
             {targets, changed, errors, phase_seconds: {recon, vulnerability}}
     """
     from core.runner import dispatch_scan_async
+    from core.ui_bridge import UIEventSubscriber
+
+    # Start subscriber so worker events flow into the local Rich Live view.
+    _ui_subscriber = UIEventSubscriber(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    _ui_subscriber.start()
 
     total = len(wildcards)
     cycle_metrics: dict = {
@@ -450,6 +455,7 @@ def _dispatch_targets_celery(wildcards: list) -> dict:
             _record_scan_result(handle, False)
             cycle_metrics["errors"] += 1
 
+    _ui_subscriber.stop()
     return cycle_metrics
 
 

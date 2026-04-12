@@ -107,9 +107,17 @@ def scan_target_task(self, target: dict) -> dict:
     try:
         from core.intel import AIClient, IntelMiner
         from core.runner import ProOrchestrator
+        from core.ui import set_ui_bridge_publisher
+        from core.ui_bridge import UIEventPublisher
 
-        orch = ProOrchestrator(IntelMiner(AIClient()))
-        result = orch.start_mission(target)
+        pub = UIEventPublisher(REDIS_URL)
+        set_ui_bridge_publisher(pub)
+        try:
+            orch = ProOrchestrator(IntelMiner(AIClient()))
+            result = orch.start_mission(target)
+        finally:
+            # Always clear the publisher so it is not reused on task retry.
+            set_ui_bridge_publisher(None)
 
         logger.info(
             "Task %s | Done %s — subs=%s alive=%s vulns=%s ok=%s",
