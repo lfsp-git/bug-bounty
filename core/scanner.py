@@ -53,26 +53,73 @@ _NUCLEI_TIMEOUT_LARGE_SCAN = 5400
 # explodes request counts. Cap: use HTTPX live hosts when URL count exceeds this.
 _NUCLEI_STEALTH_URL_THRESHOLD = int(os.getenv("NUCLEI_STEALTH_URL_THRESHOLD", "100"))
 # Max interesting (param-bearing) URLs to run injection templates against
-_NUCLEI_INJECT_URL_CAP = int(os.getenv("NUCLEI_INJECT_URL_CAP", "200"))
+_NUCLEI_INJECT_URL_CAP = int(os.getenv("NUCLEI_INJECT_URL_CAP", "500"))
 # Injection-focused tags for the second nuclei run
 _NUCLEI_INJECT_TAGS = "sqli,xss,lfi,rce,ssrf,xxe,injection,command-injection,idor,auth-bypass"
 
 
-def _extract_interesting_urls(url_file: str, output_file: str, cap: int = 200) -> int:
-    """Extract URLs with query params or dynamic path segments from a merged URL list.
+def _extract_interesting_urls(url_file: str, output_file: str, cap: int = 500) -> int:
+    """Extract URLs worth running injection templates against.
 
-    These are the URLs worth running injection templates against — static assets
-    and bare hostnames are skipped.
+    Criteria (any match = interesting):
+    - Has query params (?key=val)
+    - Numeric path segment (IDs: /users/123)
+    - API path prefixes (/api/, /rest/, /v1/, /v2/, /graphql)
+    - Common injectable path segments (login, upload, admin, search, …)
+    - Server-side script extensions (.php, .asp, .aspx, .jsp, .do, .action)
 
+    Static assets (css/js/images/fonts) are excluded.
     Returns count of interesting URLs written.
     """
     import re
     _BORING_EXT = re.compile(
-        r'\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|pdf|zip|gz|tar)(\?|$)',
+        r'\.(css|js|mjs|ts|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|pdf|zip|gz|tar)(\?|$)',
         re.IGNORECASE
     )
     _INTERESTING_RX = re.compile(
-        r'\?[^=]+=|/[0-9]+(/|$)|/api/|/rest/|/v[12]/'
+        r'(?:'
+        r'\?[^=]+='                    # any query param
+        r'|/[0-9]+(?:/|$)'            # numeric path segment (IDs)
+        r'|/api(?:/|$)'               # REST API
+        r'|/rest(?:/|$)'              # REST
+        r'|/graphql'                  # GraphQL
+        r'|/v[0-9]+/'                 # versioned API (/v1/, /v2/, …)
+        r'|/search'                   # search
+        r'|/login'                    # auth
+        r'|/register'                 # signup
+        r'|/signup'                   # signup alt
+        r'|/upload'                   # file upload
+        r'|/download'                 # file download
+        r'|/file'                     # file access / LFI
+        r'|/include'                  # file inclusion
+        r'|/redirect'                 # open redirect / SSRF
+        r'|/admin'                    # admin panels
+        r'|/config'                   # config exposure
+        r'|/setup'                    # setup / install
+        r'|/install'                  # install
+        r'|/exec'                     # command exec
+        r'|/cmd'                      # command exec
+        r'|/profile'                  # user profile
+        r'|/user'                     # user endpoint
+        r'|/account'                  # account management
+        r'|/checkout'                 # e-commerce
+        r'|/order'                    # e-commerce
+        r'|/pay'                      # payment
+        r'|/invoice'                  # invoice
+        r'|/report'                   # report / export
+        r'|/export'                   # data export
+        r'|/import'                   # data import
+        r'|/backup'                   # backup
+        r'|/debug'                    # debug
+        r'|/test'                     # test endpoints
+        r'|/vulnerabilities'          # known vuln paths
+        r'|\.php(?:\?|/|$)'           # PHP scripts
+        r'|\.asp(?:x)?(?:\?|/|$)'    # ASP/ASPX scripts
+        r'|\.jsp(?:\?|/|$)'           # JSP scripts
+        r'|\.do(?:\?|/|$)'           # Struts actions
+        r'|\.action(?:\?|/|$)'       # Struts actions
+        r')',
+        re.IGNORECASE
     )
     seen: set = set()
     written = 0
@@ -712,23 +759,26 @@ class MissionRunner:
             phase_result["ok"] = False
             phase_result["errors"].append("Nuclei failed")
 
-        # Injection run: when stealth URL cap redirected nuclei to host-level checks,
-        # run a second focused pass against interesting (param-bearing) crawled URLs
-        # using only injection templates (custom templates + inject tags). Capped at
-        # _NUCLEI_INJECT_URL_CAP URLs to keep request count bounded.
-        if (nuclei_template_dirs and nuclei_input_effective != nuclei_input
-                and self.custom_template_paths and os.path.exists(nuclei_input)):
+        # Injection run: focused second pass against interesting (action-bearing) crawled
+        # URLs using only custom templates + injection tags. Runs unconditionally when
+        # custom templates are available — not gated on stealth mode — so small targets
+        # (where stealth URL cap didn't trigger) also get param-level injection testing.
+        #
+        # IMPORTANT: uses a separate output file (inject.jsonl) to avoid truncating the
+        # stealth findings already written to findings_file, then merges the two.
+        if self.custom_template_paths and os.path.exists(nuclei_input):
             inject_url_file = findings_file + ".inject_urls.txt"
             inject_count = _extract_interesting_urls(nuclei_input, inject_url_file, _NUCLEI_INJECT_URL_CAP)
             if inject_count > 0:
+                inject_findings_file = findings_file + ".inject.jsonl"
                 ui_log(
                     "NUCLEI",
-                    f"Injection run: {inject_count} param-bearing URLs × custom templates",
+                    f"Injection run: {inject_count} interesting URLs × custom templates",
                     Colors.INFO,
                 )
                 _tool_start("Nuclei", input_count=inject_count)
                 ok2 = _run_with_progress("Nuclei", lambda: run_nuclei(
-                    inject_url_file, findings_file,
+                    inject_url_file, inject_findings_file,
                     tags=_NUCLEI_INJECT_TAGS,
                     rate_limit=NUCLEI_RATE_LIMIT,
                     progress_callback=_nuclei_progress_callback,
@@ -736,12 +786,25 @@ class MissionRunner:
                     timeout_override=None,
                     template_dirs=None),
                     extra_stats_fn=_nuclei_extra_stats)
-                if ok2:
-                    _tool_done("Nuclei", "vulns", findings_file)
-                try:
-                    os.remove(inject_url_file)
-                except OSError:
-                    pass
+                # Merge injection findings into main findings file (append, not overwrite)
+                if ok2 and os.path.exists(inject_findings_file):
+                    inj_lines = 0
+                    try:
+                        with open(findings_file, 'a', encoding='utf-8') as main_f, \
+                             open(inject_findings_file, 'r', encoding='utf-8', errors='ignore') as inj_f:
+                            for inj_line in inj_f:
+                                if inj_line.strip():
+                                    main_f.write(inj_line)
+                                    inj_lines += 1
+                    except OSError as _me:
+                        logging.warning(f"Injection merge failed: {_me}")
+                    if inj_lines > 0:
+                        _tool_done("Nuclei", "vulns", findings_file)
+                for _tmp in (inject_url_file, inject_findings_file):
+                    try:
+                        os.remove(_tmp)
+                    except OSError:
+                        pass
         
         # Consolidar filtragem e validação em um passo único
         if os.path.exists(findings_file):

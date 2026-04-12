@@ -1,6 +1,6 @@
 import os, subprocess, shlex, re, io, shutil, sys, threading, json, time
 import logging
-from typing import List
+from typing import List, Dict, Optional
 from core.ui import ui_log, Colors
 from core.config import (
     get_tool_timeout, NUCLEI_RATE_LIMIT, NUCLEI_CONCURRENCY,
@@ -200,12 +200,13 @@ def run_httpx(input_file, output_file, rate_limit=100):
 
     run_cmd(cmd, "HTTPX", output_file, timeout_override=adaptive_timeout)
 
-def run_katana_surgical(input_file, output_file, rate_limit=100):
+def run_katana_surgical(input_file, output_file, rate_limit=100, extra_headers: Optional[List[str]] = None):
     """Crawling com URLs do HTTPX.
 
     Timeout adaptativo: 300s para ≤30 URLs, +6s por URL adicional,
     máx 900s — evita timeout em alvos grandes sem travar para sempre.
     -js-crawl: extrai endpoints embutidos em JS (Angular/React SPAs).
+    extra_headers: additional -H flags (e.g. ['Cookie: PHPSESSID=abc; security=low'])
     """
     # Gaussian jitter before launching to break WAF rate fingerprints.
     jitter_sleep("katana")
@@ -232,6 +233,10 @@ def run_katana_surgical(input_file, output_file, rate_limit=100):
     proxy = get_random_proxy()
     if proxy:
         cmd.extend(["-proxy", proxy])
+
+    # Authenticated crawling (e.g. DVWA session cookies)
+    for hdr in (extra_headers or []):
+        cmd.extend(["-H", hdr])
 
     run_cmd(cmd, "Katana", output_file)
 
