@@ -332,13 +332,15 @@ class TechDetector:
         if not _os.path.isdir(base):
             return []
 
-        # Core dirs: always include regardless of tech detection.
+        # Core dirs: always include generic checks regardless of tech detection.
+        # NOTE: http/cves is intentionally NOT here — it contains 6000+ CVE
+        # templates and would generate millions of requests against any target.
+        # CVE coverage comes only via tech-specific sub-paths in TECH_DIR_MAP.
         core_dirs = [
             "http/misconfiguration",
             "http/exposures",
             "http/takeovers",
             "http/default-logins",
-            "http/cves",
         ]
 
         # Tech → relevant template sub-paths (tried in order; first existing wins per tech).

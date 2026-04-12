@@ -345,13 +345,14 @@ def run_nuclei(
 
     # Tech-specific template dirs: restrict scan to relevant subdirectories.
     # Dirs that do not exist on disk are silently skipped (no crash).
+    # When dirs are active, DO NOT also pass -tags: the dir list is the scope
+    # restriction and broad tags (cve, xss, sqli…) would either be redundant
+    # or — in some nuclei versions — expand beyond the dirs.
     valid_tdirs = [d for d in (template_dirs or []) if os.path.isdir(d)]
     if valid_tdirs:
         for tdir in valid_tdirs:
             cmd.extend(["-t", tdir])
-        if tags:
-            cmd.extend(["-tags", tags])
-        ui_log("NUCLEI", f"Stealth: {len(valid_tdirs)} template dirs, tags={tags or 'all'}", Colors.DIM)
+        ui_log("NUCLEI", f"Stealth: {len(valid_tdirs)} template dirs", Colors.DIM)
     else:
         # Fallback: full template library, filtered by tag (current default).
         if tags:
