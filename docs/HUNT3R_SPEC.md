@@ -1,4 +1,4 @@
-# HUNT3R v1.0-EXCALIBUR — Especificação Técnica
+# HUNT3R v1.1-OVERLORD — Especificação Técnica
 
 ## 1. Modelo de execução ponta a ponta
 
@@ -12,7 +12,7 @@
    - *Domínios*: Subfinder → DNSX → Uncover → HTTPX
    - *IPs/CIDRs*: Naabu (30 portas web) → HTTPX
 4. **Fase tática**
-   - Katana (`-js-crawl`, depth 3) → URLFinder (hist URLs) → Merge dedup → JS Hunter → Nuclei (apenas Medium/High/Critical)
+   - Katana (`-js-crawl`, depth 3) → URLFinder (hist URLs) → Merge dedup → JS Hunter → **ReAct Heuristic Agent** → Nuclei (apenas Medium/High/Critical)
 5. **Validação e filtragem**
    - `FalsePositiveKiller` (7 filtros determinísticos + ML LightGBM) + validação IA (score ≥ 60)
 6. **Saída e estado**
@@ -209,8 +209,114 @@ corresponder, o scan retorna ao modo padrão (todas as templates + `-tags` filte
 - Alvos com 400+ hosts vivos podem precisar de timeout nuclei ajustado
 - Modelo ML treinado com dados sintéticos — retraining com dados reais aumenta precisão
 - Uncover retorna 0 se Shodan/Censys sem créditos de consulta disponíveis
+- ReAct Agent desativado automaticamente quando OPENROUTER_API_KEY não definida
 
-## 14. Baseline de validação
+## 15. Cognição — ReAct Heuristic Agent (v1.1-OVERLORD)
+
+### Módulo: `core/heuristic_agent.py` → `ReActHeuristicAgent`
+
+Implementa um agente ReAct (Reason → Act → Observe) puro Python sobre o
+`AIClient` (OpenRouter) existente — sem LangChain ou dependências externas.
+
+### Pipeline position
+
+```
+JS Hunter → [ReAct Agent] → Nuclei
+```
+
+O agente pré-popula `findings_file` com anomalias de lógica de negócio
+**antes** do Nuclei rodar — Nuclei então appenda seus próprios findings no
+mesmo arquivo, e o FP filter processa tudo junto.
+
+### Loop ReAct
+
+```
+THOUGHT  → LLM analisa endpoints e decide INJECT | DISCARD
+ACTION   → Agente constrói URLs mutadas + headers BAC e executa probes
+OBSERVE  → Compara baseline vs probe: status diff, size diff
+FINDING  → Anomalia confirmada → JSONL appended ao findings_file
+```
+
+### Seleção de endpoints (Thought)
+
+`_is_interesting(url)` filtra endpoints por 6 padrões regex:
+- Query params com IDs (`?id=N`, `?user_id=N`, `?uuid=...`)
+- Paths com segmentos numéricos (`/users/123`, `/orders/456`)
+- APIs versionadas (`/api/v1/.../N`)
+- Params de controle de acesso (`?role=`, `?permission=`)
+- Paths privilegiados (`/admin`, `/internal`, `/dashboard`)
+- Paths object-reference genéricos (`/resource/N`)
+
+Seleciona até `REACT_MAX_ENDPOINTS` (padrão: 15) mais complexos por prioridade.
+
+### Prompt LLM (ReAct style)
+
+Estruturado como Thought/Action/Observation com regras explícitas:
+- INJECT apenas quando há referência a objeto identificável
+- DISCARD assets estáticos, forms de busca, endpoints sem objeto
+- Resposta esperada: JSON array puro (sem markdown fences)
+
+### Rate limiting e retries
+
+`_call_llm_with_retry()` implementa exponential backoff:
+
+| Tentativa | Delay |
+|-----------|-------|
+| 1 | imediata |
+| 2 | 3s |
+| 3 | 6s |
+| (esgotado) | retorna "[AI Offline]" |
+
+Detecta rate limit por `"429"` ou `"rate limit"` na resposta string.
+
+### Probe de endpoints (Action + Observe)
+
+Para cada decisão INJECT:
+1. `_build_probe_urls()` — muta IDs numéricos em path e query (±1, 0, 1, 9999); cap 6 URLs/endpoint
+2. `_build_bac_headers()` — header sets BAC (X-Forwarded-For, X-Original-URL, X-Rewrite-URL)
+3. `_probe_endpoint()` — busca baseline + probe com `httpx.Client(timeout=8s, verify=False)`
+4. Compara: status code diff OU `size_diff ≥ REACT_SIZE_DIFF` bytes
+
+### Critérios de anomalia
+
+| Sinal | Severidade |
+|-------|-----------|
+| 401/403/404 → 200 + body > 50 bytes | HIGH |
+| 200 → 200, size_diff ≥ 80 bytes | MEDIUM |
+
+### Schema de findings (compatível com FalsePositiveKiller + Reporter)
+
+```json
+{
+  "template-id": "llm-heuristic-idor-bac",
+  "info": {"severity": "high", "tags": ["idor", "auth-bypass", "llm-heuristic"]},
+  "host": "<baseline_url>",
+  "matched-at": "<probe_url>",
+  "severity": "high",
+  "extracted-results": ["status_diff=403→200", "size_diff=1234", "reason=..."],
+  "_hunt3r_source": "llm_heuristic_agent",
+  "_llm_reason": "<LLM justification>"
+}
+```
+
+### Env vars de controle
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `REACT_MAX_ENDPOINTS` | 15 | Endpoints máximos por chamada LLM |
+| `REACT_MAX_PROBES` | 30 | Probes HTTP máximos por missão |
+| `REACT_SIZE_DIFF` | 80 | Threshold size diff (bytes) para anomalia MEDIUM |
+| `REACT_PROBE_TIMEOUT` | 8 | Timeout por probe request (seconds) |
+
+### Tolerância a falhas
+
+- LLM offline/erro → log + skip, scan continua ao Nuclei
+- JSON inválido na resposta LLM → log + skip
+- Probe HTTP timeout/error → log + skip endpoint  
+- KeyboardInterrupt propagado normalmente
+- Toda exceção inesperada → `logging.warning` + retorna result dict com `ok=False`
+
+## 16. Baseline de validação
 
 ```bash
 python3 -m pytest tests/ -q

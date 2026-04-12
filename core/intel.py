@@ -6,6 +6,7 @@ from typing import Any, Dict, Tuple
 
 from core.ai import AIClient, IntelMiner, select_model_interactive
 from core.bounty_scorer import BountyScorer
+from core.heuristic_agent import ReActHeuristicAgent
 
 
 def score_program(program: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:

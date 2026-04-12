@@ -31,6 +31,9 @@ from recon.custom_templates import load_custom_templates, get_custom_template_ta
 # AI Imports
 from core.intel import AIClient
 
+# ReAct Heuristic Agent
+from core.heuristic_agent import ReActHeuristicAgent
+
 # Diff Engine
 from core.state import ReconDiff
 
@@ -583,7 +586,35 @@ class MissionRunner:
             _tool_error("JS Hunter")
             phase_result["ok"] = False
             phase_result["errors"].append("JS Hunter failed")
-        
+
+        # ── ReAct Heuristic Analysis (LLM) ────────────────────────────────────
+        # Runs between JS Hunter and Nuclei. Samples dynamic endpoints, asks the
+        # LLM to identify IDOR/BAC candidates, probes them, and appends confirmed
+        # anomalies directly to findings_file (pre-populates Nuclei output).
+        # Always non-fatal: failure is logged and execution continues to Nuclei.
+        findings_file = paths["fin"]
+        try:
+            react_agent = ReActHeuristicAgent(AIClient(), self.target)
+            url_sources = [f for f in [combined_file, katana_file, recon_input, urlfinder_file] if os.path.exists(f)]
+            react_result = react_agent.run(
+                url_files=url_sources,
+                js_secrets_file=js_secrets_file,
+                findings_file=findings_file,
+            )
+            if react_result.get("endpoints_sampled", 0) > 0:
+                ui_log(
+                    "REACT",
+                    f"Sampled {react_result['endpoints_sampled']} | "
+                    f"Inject={react_result['endpoints_injected']} "
+                    f"Discard={react_result['endpoints_discarded']} | "
+                    f"Findings={react_result['findings_added']}",
+                    Colors.INFO,
+                )
+        except KeyboardInterrupt:
+            raise
+        except Exception as _react_err:
+            logging.warning(f"ReAct agent failed (non-fatal): {_react_err}")
+
         # Smart Nuclei Tag Detection: Extract tech from Katana/HTTPX and select appropriate tags
         nuclei_tags = self._get_smart_nuclei_tags(recon_input, katana_file)
         # Stealth optimization: resolve tech-specific template dirs to narrow scan scope.
