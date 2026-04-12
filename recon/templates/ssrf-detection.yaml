@@ -4,7 +4,7 @@ info:
   name: SSRF - Server-Side Request Forgery
   author: hunt3r
   severity: high
-  description: Detects SSRF via URL parameters that may cause server-side requests to internal resources.
+  description: Detects SSRF via URL parameters that trigger actual server-side requests. Matchers only fire on confirmed SSRF response content (cloud metadata keys, internal service markers) - never on reflected URL input.
   tags: ssrf,hunt3r
   reference:
     - https://portswigger.net/web-security/ssrf
@@ -13,28 +13,32 @@ http:
   - method: GET
     path:
       - "{{BaseURL}}/?url=http://169.254.169.254/latest/meta-data/"
-      - "{{BaseURL}}/?url=http://127.0.0.1/"
-      - "{{BaseURL}}/?target=http://169.254.169.254/"
-      - "{{BaseURL}}/?path=http://127.0.0.1/"
+      - "{{BaseURL}}/?url=http://169.254.169.254/latest/meta-data/ami-id"
+      - "{{BaseURL}}/?target=http://169.254.169.254/latest/meta-data/"
       - "{{BaseURL}}/proxy?url=http://169.254.169.254/latest/meta-data/"
-      - "{{BaseURL}}/fetch?url=http://127.0.0.1/"
-      - "{{BaseURL}}/redirect?url=http://127.0.0.1/"
-      - "{{BaseURL}}/api/fetch?url=http://127.0.0.1:8080/"
+      - "{{BaseURL}}/fetch?url=http://169.254.169.254/latest/meta-data/"
+      - "{{BaseURL}}/api/ping?ip=http://169.254.169.254/"
 
+    # NOTE: Only match ACTUAL metadata response content, NEVER the injected
+    # URL string itself (which any SPA error page will reflect back).
     matchers-condition: or
     matchers:
-      - type: regex
-        part: body
-        regex:
-          - "ami-id"
-          - "instance-id"
-          - "169.254.169.254"
-          - "local-hostname"
-          - "root:([x*]|[a-zA-Z0-9!$#%_@&\\.\\-]+):0:0:"
-
       - type: word
         part: body
         words:
-          - "ami-"
+          - "ami-id"
+          - "instance-id"
+          - "local-hostname"
           - "ec2metadata"
           - "instance-type"
+          - "placement/region"
+          - "public-ipv4"
+          - "iam/security-credentials"
+
+      - type: regex
+        part: body
+        regex:
+          - "ami-[0-9a-f]{8,17}"
+          - "i-[0-9a-f]{17}"
+          - "\"instanceId\"\\s*:"
+          - "\"privateIp\"\\s*:"

@@ -30,15 +30,15 @@ http:
       - type: status
         status: [200]
 
-      - type: word
+      - type: regex
         part: body
-        words:
-          - "\"id\""
-          - "\"email\""
-          - "\"username\""
-          - "\"password\""
-          - "\"role\""
-          - "\"data\""
+        # Require sensitive fields that prove unauthorized access, not just any JSON
+        regex:
+          - "\"password\"\\s*:"
+          - "\"passwordHash\"\\s*:"
+          - "\"totpSecret\"\\s*:"
+          - "\"isAdmin\"\\s*:"
+          - "\"role\"\\s*:\\s*\"admin\""
         condition: or
 
       - type: word
@@ -58,6 +58,6 @@ http:
       - type: regex
         part: body
         regex:
-          - "\"password\"\s*:"
-          - "\"passwordHash\"\s*:"
-          - "\"totpSecret\"\s*:"
+          - "\"password\"\\s*:"
+          - "\"passwordHash\"\\s*:"
+          - "\"totpSecret\"\\s*:"

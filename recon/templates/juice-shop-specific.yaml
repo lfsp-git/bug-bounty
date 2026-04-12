@@ -105,5 +105,5 @@ http:
       - type: regex
         part: body
         regex:
-          - "\"Products\"\s*:"
-          - "\"UserId\"\s*:[0-9]+"
+          - "\"Products\"\\s*:"
+          - "\"UserId\"\\s*:[0-9]+"

