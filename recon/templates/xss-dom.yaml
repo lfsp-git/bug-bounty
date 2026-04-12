@@ -1,0 +1,35 @@
+id: hunt3r-xss-dom
+
+info:
+  name: DOM-Based XSS Detection
+  author: hunt3r
+  severity: medium
+  description: Detects DOM-based XSS via hash-based navigation and URL parameter sinks.
+  tags: xss,dom-xss,hunt3r
+  reference:
+    - https://portswigger.net/web-security/cross-site-scripting/dom-based
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/#<img src=x onerror=alert(1)>"
+      - "{{BaseURL}}/?lang=<script>alert(1)</script>"
+      - "{{BaseURL}}/redirect?to=javascript:alert(1)"
+      - "{{BaseURL}}/redirect?url=javascript:alert(1)"
+      - "{{BaseURL}}/vulnerabilities/xss_d/?default=<script>alert(1)</script>"
+      - "{{BaseURL}}/vulnerabilities/xss_d/?default=English<script>alert(1)</script>"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "<script>alert(1)</script>"
+          - "onerror=alert(1)"
+
+      - type: regex
+        part: body
+        regex:
+          - "document\\.write\\(.*location\\.hash"
+          - "innerHTML.*location\\."
+          - "eval\\(.*location\\."

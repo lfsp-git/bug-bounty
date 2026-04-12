@@ -1,0 +1,52 @@
+id: hunt3r-admin-panel-exposure
+
+info:
+  name: Admin Panel & Sensitive Path Exposure
+  author: hunt3r
+  severity: high
+  description: Detects accessible admin panels, management interfaces and privileged endpoints. Checks Juice Shop /administration, DVWA admin, and common patterns.
+  tags: exposure,admin,hunt3r
+  reference:
+    - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/administration"
+      - "{{BaseURL}}/admin"
+      - "{{BaseURL}}/admin.php"
+      - "{{BaseURL}}/admin/login"
+      - "{{BaseURL}}/manage"
+      - "{{BaseURL}}/manager"
+      - "{{BaseURL}}/dashboard"
+      - "{{BaseURL}}/wp-admin/"
+      - "{{BaseURL}}/phpmyadmin/"
+      - "{{BaseURL}}/pma/"
+      - "{{BaseURL}}/adminer.php"
+      - "{{BaseURL}}/webadmin"
+      - "{{BaseURL}}/controlpanel"
+      - "{{BaseURL}}/cp/"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "admin"
+          - "panel"
+          - "management"
+          - "dashboard"
+          - "Administration"
+          - "Registered Users"
+        condition: or
+
+      - type: word
+        part: body
+        negative: true
+        words:
+          - "404 Not Found"
+          - "403 Forbidden"
+          - "Access Denied"

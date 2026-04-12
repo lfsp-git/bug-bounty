@@ -1,0 +1,64 @@
+id: hunt3r-csrf-detection
+
+info:
+  name: CSRF - Missing Token or SameSite
+  author: hunt3r
+  severity: medium
+  description: Detects forms lacking CSRF tokens and cookies missing SameSite attribute.
+  tags: csrf,hunt3r
+  reference:
+    - https://portswigger.net/web-security/csrf
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/csrf/"
+      - "{{BaseURL}}/profile"
+      - "{{BaseURL}}/account/settings"
+      - "{{BaseURL}}/api/v1/user/settings"
+      - "{{BaseURL}}/change-password"
+      - "{{BaseURL}}/rest/user/change-password"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "<form"
+
+      - type: word
+        part: body
+        negative: true
+        words:
+          - "csrf"
+          - "_token"
+          - "authenticity_token"
+          - "nonce"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/user/change-password?current=&new=pwned123&repeat=pwned123"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "password"
+          - "success"
+          - "changed"
+        condition: or
+
+      - type: word
+        part: body
+        negative: true
+        words:
+          - "Unauthorized"
+          - "token"
+          - "forbidden"

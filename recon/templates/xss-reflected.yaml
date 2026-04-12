@@ -1,0 +1,43 @@
+id: hunt3r-xss-reflected
+
+info:
+  name: XSS Reflected Detection
+  author: hunt3r
+  severity: medium
+  description: Detects reflected XSS in common parameters and known DVWA/Juice Shop endpoints.
+  tags: xss,hunt3r
+  reference:
+    - https://portswigger.net/web-security/cross-site-scripting/reflected
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/xss_r/?name=hunt3rxsstest<h1>xss</h1>"
+      - "{{BaseURL}}/?q=hunt3rxsstest<h1>xss</h1>"
+      - "{{BaseURL}}/?search=hunt3rxsstest<h1>xss</h1>"
+      - "{{BaseURL}}/?name=hunt3rxsstest<h1>xss</h1>"
+      - "{{BaseURL}}/search?q=hunt3rxsstest<h1>xss</h1>"
+      - "{{BaseURL}}/api/search?q=hunt3rxsstest<h1>xss</h1>"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "hunt3rxsstest<h1>xss</h1>"
+
+      - type: word
+        part: header
+        words:
+          - "text/html"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/xss_r/?name=<script>alert(document.domain)</script>"
+      - "{{BaseURL}}/?q=<script>alert(document.domain)</script>"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "<script>alert(document.domain)</script>"

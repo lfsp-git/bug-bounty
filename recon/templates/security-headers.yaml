@@ -1,0 +1,48 @@
+id: hunt3r-security-headers
+
+info:
+  name: Missing Security Headers
+  author: hunt3r
+  severity: medium
+  description: Detects missing or misconfigured security headers (CSP, HSTS, X-Frame-Options, etc.).
+  tags: misconfig,headers,hunt3r
+  reference:
+    - https://owasp.org/www-project-secure-headers/
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/login"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        part: header
+        negative: true
+        words:
+          - "Content-Security-Policy"
+        name: missing-csp
+
+      - type: word
+        part: header
+        negative: true
+        words:
+          - "X-Frame-Options"
+          - "frame-ancestors"
+        condition: and
+        name: missing-x-frame-options
+
+      - type: word
+        part: header
+        negative: true
+        words:
+          - "X-Content-Type-Options"
+        name: missing-xcto
+
+    extractors:
+      - type: kval
+        part: header
+        kval:
+          - Server
+          - X-Powered-By

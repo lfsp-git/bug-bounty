@@ -1,0 +1,70 @@
+id: hunt3r-sensitive-files
+
+info:
+  name: Sensitive Files & Directory Exposure
+  author: hunt3r
+  severity: medium
+  description: Detects exposed sensitive files including .env, backup files, source code, git repos, and config files.
+  tags: exposure,misconfig,hunt3r
+  reference:
+    - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+      - "{{BaseURL}}/.env.local"
+      - "{{BaseURL}}/.env.production"
+      - "{{BaseURL}}/.git/HEAD"
+      - "{{BaseURL}}/.git/config"
+      - "{{BaseURL}}/config.php"
+      - "{{BaseURL}}/config.json"
+      - "{{BaseURL}}/configuration.php"
+      - "{{BaseURL}}/database.php"
+      - "{{BaseURL}}/db.php"
+      - "{{BaseURL}}/wp-config.php.bak"
+      - "{{BaseURL}}/backup.zip"
+      - "{{BaseURL}}/backup.tar.gz"
+      - "{{BaseURL}}/.htpasswd"
+      - "{{BaseURL}}/phpinfo.php"
+      - "{{BaseURL}}/info.php"
+      - "{{BaseURL}}/test.php"
+      - "{{BaseURL}}/readme.md"
+      - "{{BaseURL}}/CHANGELOG.md"
+      - "{{BaseURL}}/composer.json"
+      - "{{BaseURL}}/package.json"
+      - "{{BaseURL}}/Dockerfile"
+      - "{{BaseURL}}/docker-compose.yml"
+      - "{{BaseURL}}/nginx.conf"
+      - "{{BaseURL}}/swagger.json"
+      - "{{BaseURL}}/api-docs"
+      - "{{BaseURL}}/api-docs.json"
+      - "{{BaseURL}}/swagger-ui.html"
+      - "{{BaseURL}}/openapi.json"
+      - "{{BaseURL}}/ftp/"
+      - "{{BaseURL}}/ftp/legal.md"
+      - "{{BaseURL}}/ftp/quarantine/"
+      - "{{BaseURL}}/encryptionkeys/"
+      - "{{BaseURL}}/support/logs"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "DB_PASSWORD"
+          - "APP_KEY"
+          - "SECRET"
+          - "password"
+          - "ref: refs/heads"
+          - "repository"
+          - "phpinfo()"
+          - "PHP Version"
+          - "swagger"
+          - "openapi"
+          - "Juice Shop"
+          - "encryptionkeys"
+        condition: or

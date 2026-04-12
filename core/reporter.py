@@ -1,5 +1,5 @@
 """
-Hunt3r v1.0-EXCALIBUR - Bug Bounty Report Generator
+Hunt3r v1.1-OVERLORD - Bug Bounty Report Generator
 Generates structured Markdown reports from scan findings,
 ready for submission to H1, BugCrowd, and Intigriti.
 """
@@ -25,10 +25,79 @@ SEVERITY_EMOJI = {
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
+# CVSS v3.1 base score ranges by template-id keyword for common vuln classes
+_CVSS_HINTS: Dict[str, tuple] = {
+    "sqli":              ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "sql-injection":     ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "command-injection": ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "rce":               ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "xss-stored":        ("8.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:H"),
+    "xss-reflected":     ("6.1", "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"),
+    "xss":               ("6.1", "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"),
+    "lfi":               ("7.5", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"),
+    "file-upload":       ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "ssrf":              ("9.1", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"),
+    "xxe":               ("9.1", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"),
+    "idor":              ("8.1", "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"),
+    "cors":              ("7.5", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"),
+    "cors-misconfig":    ("7.5", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"),
+    "broken-auth":       ("8.1", "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"),
+    "jwt":               ("8.1", "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"),
+    "default-login":     ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "default-credentials": ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "open-redirect":     ("6.1", "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"),
+    "prototype-pollution": ("6.5", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N"),
+    "csrf":              ("6.5", "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N"),
+    "nosql":             ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "ssti":              ("9.8", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+    "info-disclosure":   ("5.3", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"),
+    "exposure":          ("5.3", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"),
+    "misconfig":         ("5.3", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"),
+}
+
+_IMPACT_MAP: Dict[str, str] = {
+    "sqli":           "An attacker can extract the entire database, bypass authentication, or escalate to OS-level code execution via INTO OUTFILE or xp_cmdshell.",
+    "command-injection": "An attacker can execute arbitrary OS commands as the web server user, potentially leading to full system compromise, data exfiltration, and lateral movement.",
+    "xss-stored":     "Stored XSS persists across sessions. An attacker can steal session cookies, perform CSRF, redirect users to phishing pages, or install keyloggers.",
+    "xss-reflected":  "An attacker can steal session cookies, perform unauthorized actions on behalf of the victim, or redirect to phishing pages via a crafted URL.",
+    "lfi":            "An attacker can read arbitrary files from the server, including /etc/passwd, application source code, credentials, and private keys.",
+    "file-upload":    "An attacker can upload a web shell and achieve Remote Code Execution as the web server user.",
+    "ssrf":           "An attacker can probe internal services, access cloud metadata APIs (AWS/GCP/Azure), pivot to internal network, or bypass authentication.",
+    "xxe":            "An attacker can read arbitrary server files, perform SSRF, or trigger denial-of-service via billion-laughs attack.",
+    "idor":           "An attacker can access or modify other users' data, perform account takeover, or extract sensitive PII without authorization.",
+    "cors-misconfig": "A malicious website can read cross-origin responses, steal authenticated data (tokens, PII), or perform unauthorized actions as any logged-in user.",
+    "jwt":            "An attacker can forge authentication tokens to gain unauthorized access, escalate privileges, or impersonate any user including administrators.",
+    "default-login":  "An attacker can gain administrative access using publicly known default credentials, leading to full application compromise.",
+    "open-redirect":  "An attacker can craft phishing URLs that appear legitimate, redirecting victims to malicious sites to steal credentials or install malware.",
+    "csrf":           "An attacker can trick a logged-in user into performing unintended actions (change password, transfer funds, etc.) via a forged request.",
+    "nosql":          "An attacker can bypass authentication, extract all database documents, or manipulate queries to access unauthorized data.",
+    "ssti":           "An attacker can inject template expressions to achieve Remote Code Execution or read sensitive server-side files.",
+    "prototype-pollution": "An attacker can pollute JavaScript prototype chains to alter application behavior, bypass security controls, or achieve XSS/RCE.",
+    "exposure":       "Sensitive information exposed may aid further attacks, including credential-based attacks, network mapping, or targeted exploitation.",
+}
+
 
 def _sev(finding: Dict) -> str:
     """Extract severity from a finding, checking both top-level and nested info.severity."""
     return (finding.get("severity") or finding.get("info", {}).get("severity", "info")).lower()
+
+
+def _cvss_for_tid(tid: str) -> tuple:
+    """Return (score_str, vector_str) for a template-id, or ('', '') if unknown."""
+    tid_lower = tid.lower()
+    for key, val in _CVSS_HINTS.items():
+        if key in tid_lower:
+            return val
+    return ("", "")
+
+
+def _impact_for_tid(tid: str) -> str:
+    """Return impact statement for a template-id."""
+    tid_lower = tid.lower()
+    for key, val in _IMPACT_MAP.items():
+        if key in tid_lower:
+            return val
+    return ""
 
 
 class BugBountyReporter:
@@ -141,7 +210,7 @@ class BugBountyReporter:
             "custom": "Custom (alvos.txt)",
         }.get(str(self.platform).lower(), self.platform.upper() if self.platform not in ("unknown", "") else "Unknown")
         lines.append(f"**Platform:** {_platform_label}  ")
-        lines.append(f"**Tool:** Hunt3r v1.0-EXCALIBUR\n")
+        lines.append(f"**Tool:** Hunt3r v1.1-OVERLORD\n")
 
         # Summary table
         crits = sum(1 for f in findings if _sev(f) == "critical")
@@ -158,6 +227,45 @@ class BugBountyReporter:
         lines.append(f"| 🟡 Medium | {meds} |")
         lines.append(f"| 🟣 JS Secrets | {len(js_secrets)} |")
         lines.append("")
+
+        # Executive Summary
+        total_vulns = crits + highs + meds
+        if total_vulns > 0:
+            risk = "CRITICAL" if crits else ("HIGH" if highs else "MEDIUM")
+            lines.append("## 🎯 Executive Summary\n")
+            lines.append(f"> **Overall Risk: {risk}** — {total_vulns} vulnerabilities found across {self.handle}.\n")
+
+            # Group by vuln class
+            from collections import Counter
+            classes = Counter()
+            for f in findings:
+                tid = f.get("template-id", "")
+                for key in _CVSS_HINTS:
+                    if key in tid.lower():
+                        classes[key] += 1
+                        break
+                else:
+                    classes["other"] += 1
+
+            if classes:
+                lines.append("**Vulnerability Classes Detected:**\n")
+                for vuln_class, count in sorted(classes.items(), key=lambda x: -x[1]):
+                    lines.append(f"- `{vuln_class}` — {count} finding(s)")
+                lines.append("")
+
+            # Risk narrative
+            narratives = []
+            if crits:
+                narratives.append(f"🔴 **{crits} CRITICAL** findings require immediate remediation — potential for full system compromise.")
+            if highs:
+                narratives.append(f"🟠 **{highs} HIGH** findings can lead to unauthorized data access or account takeover.")
+            if meds:
+                narratives.append(f"🟡 **{meds} MEDIUM** findings indicate security misconfigurations that expand attack surface.")
+            if js_secrets:
+                narratives.append(f"🟣 **{len(js_secrets)} secrets** found in JavaScript — verify each for real exposure risk.")
+            for n in narratives:
+                lines.append(n + "  ")
+            lines.append("")
 
         # Critical + High findings (full detail for submission)
         priority = [f for f in findings if _sev(f) in ("critical", "high")]
@@ -178,7 +286,6 @@ class BugBountyReporter:
             _SEV_ICON = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "unknown": "⚪"}
             lines.append("## 🟣 JS Secrets Discovered\n")
             lines.append("> ⚠️ These may contain API keys, tokens, or credentials. Verify before reporting.\n")
-            # Sort: critical/high first
             _sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
             sorted_secrets = sorted(js_secrets[:50], key=lambda s: _sev_order.get(str(s.get("severity", "unknown")).lower(), 4))
             for s in sorted_secrets:
@@ -204,7 +311,7 @@ class BugBountyReporter:
         lines.append("- [ ] Submit to platform (H1/BC/IT) with CVSS score estimate")
         lines.append("")
         lines.append("---")
-        lines.append("*Generated by Hunt3r v1.0-EXCALIBUR — autonomous bug bounty hunter*")
+        lines.append("*Generated by Hunt3r v1.1-OVERLORD — autonomous bug bounty hunter*")
 
         return "\n".join(lines)
 
@@ -220,19 +327,28 @@ class BugBountyReporter:
         remediation = finding.get("info", {}).get("remediation", "")
         name = finding.get("info", {}).get("name", tid)
         refs = finding.get("info", {}).get("reference", [])
+        cvss_score, cvss_vector = _cvss_for_tid(tid)
+        impact = finding.get("info", {}).get("impact", "") or _impact_for_tid(tid)
 
         lines = [f"### {emoji} {idx}. {name}\n"]
         lines.append(f"| Field | Value |")
         lines.append(f"|-------|-------|")
         lines.append(f"| **Severity** | `{sev.upper()}` |")
+        if cvss_score:
+            lines.append(f"| **CVSS Score** | `{cvss_score}` |")
         lines.append(f"| **Template** | `{tid}` |")
         lines.append(f"| **Host** | `{host}` |")
         lines.append(f"| **Matched At** | `{matched}` |")
         lines.append(f"| **CVE** | `{cve_str}` |")
+        if cvss_vector:
+            lines.append(f"| **CVSS Vector** | `{cvss_vector}` |")
         lines.append("")
 
         if description:
             lines.append(f"**Description:** {description}\n")
+
+        if impact:
+            lines.append(f"**Impact:** {impact}\n")
 
         if detailed:
             lines.extend(self._submission_ready_block(finding))
@@ -270,7 +386,22 @@ class BugBountyReporter:
         matched = finding.get("matched-at", "N/A")
         name = finding.get("info", {}).get("name", finding.get("template-id", "Finding"))
         description = finding.get("info", {}).get("description", "")
-        impact = finding.get("info", {}).get("impact", "")
+        impact = finding.get("info", {}).get("impact", "") or _impact_for_tid(finding.get("template-id", ""))
+        tid = finding.get("template-id", "")
+        extracted = finding.get("extracted-results", [])
+        curl = finding.get("curl-command", "")
+
+        # Build PoC steps
+        poc_steps = [
+            f"1. Navigate to: `{matched}`",
+            "2. Observe the vulnerability trigger (check response body/headers/status).",
+        ]
+        if curl:
+            poc_steps.append(f"3. Reproduce with:\n   ```bash\n   {curl[:300]}\n   ```")
+        else:
+            poc_steps.append(f"3. Use the following curl command or Burp Suite to reproduce.")
+        if extracted:
+            poc_steps.append(f"4. Evidence — extracted results: `{str(extracted[0])[:100]}`")
 
         lines = [
             "**Submission Draft (H1/BC-ready):**",
@@ -278,21 +409,21 @@ class BugBountyReporter:
             f"Title: [{severity}] {name} on {host}",
             "",
             "Summary:",
-            description or "Security issue detected by automated recon; manual validation required.",
+            description or "Security vulnerability detected during automated reconnaissance.",
             "",
             "Impact:",
-            impact or "Potential security impact depends on target context and exploitability.",
+            impact or "Potential security impact — manual validation required to confirm exploitability.",
             "",
             "Steps to Reproduce:",
-            f"1. Access target: {host}",
-            f"2. Trigger/check vector observed at: {matched}",
-            "3. Confirm behavior and collect evidence (response/body/status).",
+        ]
+        lines.extend(poc_steps)
+        lines += [
             "",
             "Expected Behavior:",
-            "The application should not expose this vulnerable behavior.",
+            "The application should not be vulnerable to this attack vector.",
             "",
             "Actual Behavior:",
-            "The vulnerable behavior was observable in scan evidence.",
+            f"The vulnerable behavior was confirmed at: {matched}",
             "```",
             "",
         ]
