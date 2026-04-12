@@ -36,6 +36,10 @@ from core.ui import (
 from core.intel import AIClient, IntelMiner, score_watchdog_target
 from core.notifier import NotificationDispatcher
 
+_CELERY_ENABLED: bool = os.getenv("CELERY_ENABLED", "false").lower() in ("1", "true", "yes")
+# Per-task result collection timeout when using Celery (seconds, default 2 h).
+_CELERY_TASK_TIMEOUT: int = int(os.getenv("CELERY_TASK_TIMEOUT", str(7200)))
+
 GLOBAL_TARGETS_HISTORY = "recon/baselines/global_targets.txt"
 SCAN_HISTORY_FILE = "recon/baselines/target_scan_history.txt"
 SLEEP_MIN = WATCHDOG_SLEEP_MIN
@@ -337,6 +341,118 @@ def _scan_target_parallel_wrapper(args):
         _worker_slot_queue.put(worker_id)
 
 
+def _dispatch_targets_celery(wildcards: list) -> dict:
+    """Dispatch targets to Celery workers and collect results.
+
+    Enqueues one scan_target_task per target, then waits for all results.
+    Scan history is recorded locally (watchdog process) after each result
+    is received, preserving the same TTL semantics as the local path.
+
+    Returns:
+        cycle_metrics dict — same contract as the ThreadPoolExecutor path:
+            {targets, changed, errors, phase_seconds: {recon, vulnerability}}
+    """
+    from core.runner import dispatch_scan_async
+
+    total = len(wildcards)
+    cycle_metrics: dict = {
+        "targets": total,
+        "changed": 0,
+        "errors": 0,
+        "phase_seconds": {"recon": 0.0, "vulnerability": 0.0},
+    }
+
+    ui_log(
+        "WATCHDOG",
+        f"[CELERY] Despachando {total} alvos para workers distribuídos",
+        Colors.PRIMARY,
+    )
+
+    # Enqueue all tasks upfront so workers start immediately.
+    dispatched: list = []
+    for idx, target in enumerate(wildcards, 1):
+        if ui_interrupt_requested():
+            ui_log("WATCHDOG", "Interrupcao antes do dispatch. Abortando.", Colors.WARNING)
+            break
+        if not _should_process_target(target.get("handle", "unknown")):
+            ui_log(
+                "WATCHDOG",
+                f"[{idx}/{total}] Pulando (historico recente): {target['original_handle']}",
+                Colors.DIM,
+            )
+            cycle_metrics["targets"] = max(0, cycle_metrics["targets"] - 1)
+            continue
+        try:
+            async_result = dispatch_scan_async(target)
+            dispatched.append((target, async_result, idx))
+            ui_log(
+                "WATCHDOG",
+                f"[{idx}/{total}] Enfileirado: {target['original_handle']} "
+                f"(task={async_result.id[:8]})",
+                Colors.DIM,
+            )
+        except Exception as exc:
+            ui_log("WATCHDOG", f"[{idx}/{total}] Falha no dispatch: {exc}", Colors.ERROR)
+            cycle_metrics["errors"] += 1
+
+    # Update target count to reflect only dispatched tasks.
+    cycle_metrics["targets"] = len(dispatched)
+
+    # Collect results as they complete (ordered wait — workers run in parallel).
+    for target, async_result, idx in dispatched:
+        handle = target.get("handle", "unknown")
+        original = target.get("original_handle", handle)
+
+        if ui_interrupt_requested():
+            ui_log("WATCHDOG", "Interrupcao durante coleta. Abortando.", Colors.WARNING)
+            break
+
+        try:
+            result = async_result.get(timeout=_CELERY_TASK_TIMEOUT, propagate=False)
+
+            if isinstance(result, Exception):
+                ui_log("WATCHDOG", f"Erro em {original}: {result}", Colors.ERROR)
+                _record_scan_result(handle, False)
+                cycle_metrics["errors"] += 1
+                continue
+
+            if result and isinstance(result, dict):
+                has_changes = bool(result.get("subdomains", 0))
+                _record_scan_result(handle, has_changes)
+
+                ui_log(
+                    "WATCHDOG",
+                    f"Concluido: {original} "
+                    f"(subs={result.get('subdomains', 0)} "
+                    f"alive={result.get('alive', 0)} "
+                    f"vulns={result.get('vulns', 0)})",
+                    Colors.SUCCESS,
+                )
+
+                if has_changes:
+                    cycle_metrics["changed"] += 1
+
+                metrics = result.get("metrics", {}).get("phase_duration_seconds", {})
+                cycle_metrics["phase_seconds"]["recon"] += float(metrics.get("recon", 0.0))
+                cycle_metrics["phase_seconds"]["vulnerability"] += float(
+                    metrics.get("vulnerability", 0.0)
+                )
+            else:
+                _record_scan_result(handle, False)
+                cycle_metrics["errors"] += 1
+
+        except Exception as exc:
+            ui_log(
+                "WATCHDOG",
+                f"Timeout/falha ao coletar {original}: {exc}",
+                Colors.ERROR,
+            )
+            _record_scan_result(handle, False)
+            cycle_metrics["errors"] += 1
+
+    return cycle_metrics
+
+
 def _compute_next_sleep_seconds(cycle_metrics: dict) -> int:
     targets = int(cycle_metrics.get("targets", 0))
     changed = int(cycle_metrics.get("changed", 0))
@@ -375,40 +491,55 @@ def run_watchdog():
 
         if wildcards:
             wildcards = _prioritize_targets_by_bounty_potential(wildcards)
-            ui_log("WATCHDOG", f"{len(wildcards)} alvos | {MAX_PARALLEL_WORKERS} workers paralelos", Colors.DIM)
 
-            from core.runner import ProOrchestrator
+            if _CELERY_ENABLED:
+                # ── Distributed path: dispatch to Celery workers ──────────────
+                ui_log(
+                    "WATCHDOG",
+                    f"{len(wildcards)} alvos | modo CELERY distribuído",
+                    Colors.DIM,
+                )
+                try:
+                    cycle_metrics = _dispatch_targets_celery(wildcards)
+                except KeyboardInterrupt:
+                    ui_log("WATCHDOG", "Interrupcao recebida. Encerrando...", Colors.WARNING)
+                    return
+            else:
+                # ── Local path: ThreadPoolExecutor (default) ──────────────────
+                ui_log("WATCHDOG", f"{len(wildcards)} alvos | {MAX_PARALLEL_WORKERS} workers paralelos", Colors.DIM)
 
-            total = len(wildcards)
-            cycle_metrics = {"targets": total, "changed": 0, "errors": 0, "phase_seconds": {"recon": 0.0, "vulnerability": 0.0}}
-            tasks = []
-            for idx, target in enumerate(wildcards, 1):
-                orch = ProOrchestrator(IntelMiner(AIClient()))
-                tasks.append((orch, target, idx, total))
+                from core.runner import ProOrchestrator
 
-            executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS)
-            futures = [executor.submit(_scan_target_parallel_wrapper, t) for t in tasks]
-            try:
-                for future in as_completed(futures):
-                    result = future.result()
-                    if result.get('success'):
-                        w = result.get('worker', '?')
-                        ui_log("WATCHDOG", f"[{w}] Concluido: {result['handle']}", Colors.SUCCESS)
-                        if result.get("changes"):
-                            cycle_metrics["changed"] += 1
-                        payload = result.get("results", {})
-                        metrics = payload.get("metrics", {}).get("phase_duration_seconds", {})
-                        cycle_metrics["phase_seconds"]["recon"] += float(metrics.get("recon", 0.0))
-                        cycle_metrics["phase_seconds"]["vulnerability"] += float(metrics.get("vulnerability", 0.0))
-                    else:
-                        if result.get("reason") not in ("cached", "interrupted"):
-                            cycle_metrics["errors"] += 1
-            except KeyboardInterrupt:
-                ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
-                executor.shutdown(wait=False, cancel_futures=True)
-                return
-            finally:
-                executor.shutdown(wait=False, cancel_futures=True)
+                total = len(wildcards)
+                cycle_metrics = {"targets": total, "changed": 0, "errors": 0, "phase_seconds": {"recon": 0.0, "vulnerability": 0.0}}
+                tasks = []
+                for idx, target in enumerate(wildcards, 1):
+                    orch = ProOrchestrator(IntelMiner(AIClient()))
+                    tasks.append((orch, target, idx, total))
+
+                executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS)
+                futures = [executor.submit(_scan_target_parallel_wrapper, t) for t in tasks]
+                try:
+                    for future in as_completed(futures):
+                        result = future.result()
+                        if result.get('success'):
+                            w = result.get('worker', '?')
+                            ui_log("WATCHDOG", f"[{w}] Concluido: {result['handle']}", Colors.SUCCESS)
+                            if result.get("changes"):
+                                cycle_metrics["changed"] += 1
+                            payload = result.get("results", {})
+                            metrics = payload.get("metrics", {}).get("phase_duration_seconds", {})
+                            cycle_metrics["phase_seconds"]["recon"] += float(metrics.get("recon", 0.0))
+                            cycle_metrics["phase_seconds"]["vulnerability"] += float(metrics.get("vulnerability", 0.0))
+                        else:
+                            if result.get("reason") not in ("cached", "interrupted"):
+                                cycle_metrics["errors"] += 1
+                except KeyboardInterrupt:
+                    ui_log("WATCHDOG", "Interrupcao recebida. Cancelando workers...", Colors.WARNING)
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return
+                finally:
+                    executor.shutdown(wait=False, cancel_futures=True)
             if cycle_metrics["targets"] > 0:
                 avg_recon = cycle_metrics["phase_seconds"]["recon"] / cycle_metrics["targets"]
                 avg_vuln = cycle_metrics["phase_seconds"]["vulnerability"] / cycle_metrics["targets"]

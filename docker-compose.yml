@@ -1,0 +1,122 @@
+# Hunt3r v1.1-OVERLORD — Distributed Recon Stack
+#
+# Scale workers:   docker compose up --scale worker=4
+# One-shot build:  docker compose build
+# Teardown:        docker compose down -v
+#
+# Required env (copy .env.example → .env and fill in):
+#   REDIS_URL            (default: redis://redis:6379/0 — no change needed)
+#   H1_USER / H1_TOKEN   HackerOne credentials (watchdog wildcard fetch)
+#   IT_TOKEN             Intigriti token
+#   OPENROUTER_API_KEY   AI triage
+#   TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+#   DISCORD_WEBHOOK_URL
+
+version: "3.9"
+
+# ── Shared environment anchor (all services inherit via <<: *env) ──────────────
+x-common-env: &common-env
+  REDIS_URL: "redis://redis:6379/0"
+  CELERY_ENABLED: "true"
+  # Secrets — supply via .env file or Docker secrets; never hard-code here.
+  H1_USER: ${H1_USER:-}
+  H1_TOKEN: ${H1_TOKEN:-}
+  IT_TOKEN: ${IT_TOKEN:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+  DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+  # Tuning knobs (optional overrides)
+  CELERY_TASK_TIMEOUT: ${CELERY_TASK_TIMEOUT:-7200}
+  CELERY_TASK_SOFT_LIMIT: ${CELERY_TASK_SOFT_LIMIT:-7200}
+  CELERY_TASK_HARD_LIMIT: ${CELERY_TASK_HARD_LIMIT:-7800}
+
+# ── Shared volume mounts anchor ────────────────────────────────────────────────
+x-scan-volumes: &scan-volumes
+  - recon-data:/app/recon       # shared scan artefacts (baselines, db, cache)
+  - logs-data:/app/logs
+  - reports-data:/app/reports
+  - data-data:/app/data         # ML feedback, tool config
+
+services:
+
+  # ── Redis — message broker + result backend ──────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+        --save 60 1
+        --loglevel warning
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Watchdog — orchestrator: fetches targets, scores, and dispatches to Celery
+  watchdog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python main.py --watchdog
+    environment:
+      <<: *common-env
+    volumes: *scan-volumes
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # Only one watchdog — it manages the cycle, not the scanning.
+    deploy:
+      replicas: 1
+
+  # ── Worker — scan executor: pulls from hunt3r.scan queue ─────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # worker.py default CMD runs with --concurrency=1 (one scan per process).
+    # Scale horizontally: docker compose up --scale worker=N
+    environment:
+      <<: *common-env
+    volumes: *scan-volumes
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 3          # default: 3 parallel workers
+      resources:
+        limits:
+          cpus: "2"        # each scan is IO-bound; 2 vCPU per worker is safe
+          memory: "2G"
+
+  # ── Flower — Celery monitoring dashboard (optional) ──────────────────────────
+  flower:
+    image: mher/flower:2.0
+    command: celery flower --broker=redis://redis:6379/0 --port=5555
+    environment:
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - monitoring    # only started with: docker compose --profile monitoring up
+
+volumes:
+  redis-data:
+  recon-data:
+  logs-data:
+  reports-data:
+  data-data:
