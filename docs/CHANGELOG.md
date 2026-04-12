@@ -1,5 +1,39 @@
 # Hunt3r — Changelog
 
+## 2026-04-11 — Deep Pipeline + UI Full Refresh
+
+### `ccd749c` UI/UX completa para novos tools
+- `core/ui.py`: `PIPELINE_TOOLS` 7 → 9 tools (Naabu + URLFinder na ordem correta)
+- `_reset_live_view_data`: registra `Naabu {ports}` e `URLFinder {hist_urls}`
+- `_METRIC` map: `Naabu → live`, `URLFinder → endpoints`
+- `ui_worker_done`: exibe `pts:N` e `hist:N` no activity log quando > 0
+- `ui_scan_summary`: exibe "Portas Abertas" e "URLs Históricas" (condicionais)
+- `ICONS`: adicionados `NAABU 🔌`, `URLFINDER 📜`, `MERGE 🔀`
+- Panel height: 13 → 15 linhas (acomoda 9 tools sem cortar)
+- `__all__`: exporta `ui_interrupt_requested`, `TOOL_ICONS`, `PIPELINE_TOOLS`
+- `core/scanner.py`: `_build_results_snapshot` inclui `open_ports` e `hist_urls`
+- `tests/test_integration.py`: expected set atualizado de 7 → 9 tools
+
+### `f1af61d` Deep pipeline: port scan + hist URLs + JS-crawl
+- `recon/engines.py`: `run_naabu()` — port-scan em 30 portas web comuns (80, 443, 3000, 8080, 8443, etc.) antes do HTTPX para IPs/CIDRs
+- `recon/engines.py`: `run_urlfinder()` — URLs históricas via Wayback/AlienVault; deduped com HTTPX+Katana antes do Nuclei
+- `recon/engines.py`: `run_katana_surgical()` — `-js-crawl` (extrai endpoints de Angular/React JS bundles) + depth 2→3
+- `recon/tools.py`: exporta `run_naabu`, `run_urlfinder`
+- `core/scanner.py`: Naabu no fluxo IP mode (com fallback IPs brutos); URLFinder após Katana; merge dedup → `live.txt.combined_urls`; counts `open_ports`, `hist_urls`
+
+### `21521f2` UI single-mode spinner + scope_type
+- Spinner duplicado no banner corrigido
+- `scope_type` IP não descartado no pipeline
+
+### `703b70f` Menu interativo
+- Opção [4] Caçar TODOS os alvos.txt
+- Seleção de alvos com display de scope_type IP
+
+### `c7de89d` Suporte a IPs e CIDRs
+- `core/config.py`: `is_ip_target()`, `expand_cidr()` (colapsa /24→256 IPs em handle único)
+- `core/scanner.py`: `is_ip_mode` — skip Subfinder/DNSX/Uncover para IPs/CIDRs
+- `core/ui.py`: `ui_manual_target_input()` detecta e normaliza IPs/CIDRs
+
 ## 2026-04-11 — Sessão de debug/fix pós-watchdog noturno
 
 ### `5f246ef` Platform tagging + report naming

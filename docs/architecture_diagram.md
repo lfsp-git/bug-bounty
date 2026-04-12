@@ -27,6 +27,8 @@ graph TD
     TOOLS --> ENG[recon/engines.py]
     TOOLS --> TD[recon/tool_discovery.py]
     ENG --> JSH[recon/js_hunter.py]
+    ENG --> NBU[naabu]
+    ENG --> UF[urlfinder]
 
     FIL --> ML
 ```
@@ -39,9 +41,12 @@ graph LR
     D --> SF[Subfinder]
     SF --> DN[DNSX]
     DN --> UN[Uncover]
-    UN --> HX[HTTPX]
-    HX --> KT[Katana]
-    KT --> JS[JS Hunter]
+    UN --> NB[Naabu\nport scan]
+    NB --> HX[HTTPX]
+    HX --> KT[Katana\n-js-crawl depth 3]
+    KT --> UF[URLFinder\nhist URLs]
+    UF --> MG[Merge\ndedup URLs]
+    MG --> JS[JS Hunter]
     JS --> NU[Nuclei M/H/C]
     NU --> FP[FP Filter 7+ML]
     FP --> AI[Validação IA score≥60]
@@ -55,7 +60,7 @@ graph LR
 |---------|------------------|
 | `main.py` | CLI, roteamento de modos |
 | `core/scanner.py` | MissionRunner + ProOrchestrator |
-| `core/ui.py` | UI tática fullscreen (Rich Live) |
+| `core/ui.py` | UI tática fullscreen (Rich Live, 9 tools, height=15) |
 | `core/watchdog.py` | Loop 1-2h adaptativo + platform tagging |
 | `core/config.py` | Configuração centralizada |
 | `core/filter.py` | FalsePositiveKiller (7 camadas) |
@@ -68,7 +73,7 @@ graph LR
 | `core/cleaner.py` | --clean: purge/update/health/sync/testes |
 | `core/storage.py` | ReconDiff + CheckpointManager |
 | `core/updater.py` | PDTM + nuclei-templates |
-| `recon/engines.py` | Wrappers de ferramentas + Censys validation + Uncover sync |
+| `recon/engines.py` | Wrappers de ferramentas + run_naabu + run_urlfinder |
 | `recon/js_hunter.py` | Extração de segredos JS com campo severity |
 | `recon/platforms.py` | H1 API (platform='h1') + alvos.txt (platform='custom') |
 | `recon/tech_detector.py` | Detecção de tecnologias para tags Nuclei |
@@ -81,7 +86,7 @@ graph LR
 | `core/intel.py` | ai.py + bounty_scorer.py | `AIClient`, `IntelMiner`, `score_program`, `score_watchdog_target` |
 | `core/state.py` | storage.py | `ReconDiff`, `CheckpointManager`, `resume_mission` |
 | `core/output.py` | notifier + reporter + export | `NotificationDispatcher`, `BugBountyReporter`, `ExportFormatter` |
-| `recon/tools.py` | engines.py + tool_discovery.py | `find_tool`, `run_subfinder`, `run_nuclei`, etc. |
+| `recon/tools.py` | engines.py + tool_discovery.py | `find_tool`, `run_subfinder`, `run_naabu`, `run_urlfinder`, `run_nuclei`, etc. |
 
 ## 5) Routing de notificações
 
@@ -91,5 +96,18 @@ graph LR
 | JS Secret CRITICAL/HIGH/MEDIUM | Telegram |
 | JS Secret LOW | Descartado |
 | Nuclei Low/Info | Descartado |
-| Scan statistics (sub/host/ep/sec/vuln) | Discord embed |
+| Scan statistics (sub/host/ports/ep/hist/sec/vuln) | Discord embed |
 | Watchdog heartbeat / rain-check | Discord |
+
+## 6) Modo IP vs Domínio
+
+```mermaid
+graph LR
+    TGT{Tipo de alvo?}
+    TGT -->|IP/CIDR| NB[Naabu\n30 portas web]
+    TGT -->|Domínio| SF[Subfinder → DNSX → Uncover]
+    NB --> HX[HTTPX]
+    SF --> HX
+```
+
+Portas cobertas pelo Naabu: `80, 443, 3000, 3001, 4000, 4200, 4443, 5000, 5001, 5443, 7070, 7443, 8000-8090, 8181, 8443, 8888, 8889, 9000, 9001, 9090, 9200, 9443, 10000`

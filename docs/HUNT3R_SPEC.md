@@ -9,6 +9,142 @@
 2. **Orquestração de missão** (`core/runner.py` → `core/scanner.py`)
    - `ProOrchestrator.start_mission()` → `MissionRunner.run()`
 3. **Fase de reconhecimento**
+   - *Domínios*: Subfinder → DNSX → Uncover → HTTPX
+   - *IPs/CIDRs*: Naabu (30 portas web) → HTTPX
+4. **Fase tática**
+   - Katana (`-js-crawl`, depth 3) → URLFinder (hist URLs) → Merge dedup → JS Hunter → Nuclei (apenas Medium/High/Critical)
+5. **Validação e filtragem**
+   - `FalsePositiveKiller` (7 filtros determinísticos + ML LightGBM) + validação IA (score ≥ 60)
+6. **Saída e estado**
+   - Notificação (Telegram vulns M/H/C; Discord stats) + relatório Markdown + exportação + baseline
+
+## 2. Superfícies unificadas
+
+| Módulo | Responsabilidade |
+|--------|------------------|
+| `core/runner.py` | Ponto de entrada de orquestração |
+| `core/intel.py` | IA + scoring de alvos (`score_watchdog_target()`) |
+| `core/state.py` | Baseline e checkpoints |
+| `core/output.py` | Notificação, relatório, exportação |
+| `recon/tools.py` | Descoberta de binários + execução de ferramentas |
+
+## 3. Scoring de alvos (BountyScorer)
+
+`core/bounty_scorer.py` → `core/intel.py:score_watchdog_target()`:
+
+| Sinal | Peso | Critério |
+|-------|------|---------|
+| Wildcard scope | 35% | `*.domain.com` = 100pts; múltiplos wildcards; sem wildcard = 30-55pts |
+| Breadth | 25% | scope_size / bounty_scopes / crit_scopes — mais domínios = mais superfície |
+| Quality | 25% | TLD (`.io/.ai/.app` = alto), padrões fintech/security no domínio, bounty_range |
+| Platform | 15% | h1=75, it=65, bc=60, ywh=55; default=55 |
+
+**Score ≥ 60** → AI validation dispara. Score é escrito no `target['score']` antes do scan.
+
+## 4. UI Terminal
+
+`core/ui.py` usa Rich Live (watchdog) e prints sequenciais (single mode):
+
+- `PIPELINE_TOOLS` = 9 tools: Subfinder, DNSX, Uncover, Naabu, HTTPX, Katana, URLFinder, JS Hunter, Nuclei
+- `_stdout_lock` serializa escritas no terminal
+- `_live_view_lock` protege estado compartilhado do live view
+- Roteamento de workers via `set_worker_context()`
+- Worker panels: height=15 (acomoda 9 tools)
+- Guard para terminais pequenos (< 80x24)
+
+## 5. Contratos do pipeline
+
+`MissionRunner` emite payloads explícitos por fase:
+
+- `ok` — sucesso da fase
+- `errors` — lista de erros
+- `counts` — contagens de resultados
+- `paths` — caminhos de arquivos gerados
+
+Resultado final da missão inclui:
+- `phase_results` — resultados por fase
+- `errors` — erros agregados
+- `ok` — sucesso geral
+- `metrics.phase_duration_seconds` — duração por fase
+- `open_ports` — portas abertas encontradas pelo Naabu (IP mode)
+- `hist_urls` — URLs históricas encontradas pelo URLFinder
+
+## 6. Comportamento operacional do Watchdog
+
+- Workers paralelos configuráveis (`WATCHDOG_WORKERS`, default: 3)
+- Platform tagging: `platform_map` mantém `raw_target → 'h1'/'it'/'custom'`
+- Ciclo de sleep adaptativo (1-2h base):
+  - `change_ratio ≥ 30%` → dorme `SLEEP_MIN` (1h)
+  - `change_ratio = 0 && erros = 0` → dorme `SLEEP_MAX + 1800` (~3h)
+  - `erros > 1/3 dos alvos` → dorme `SLEEP_MAX + 3600` (~4h)
+  - Sem alvos → dorme 15min (retry rápido)
+
+## 7. Notificações
+
+| Canal | Conteúdo | Trigger |
+|-------|----------|---------|
+| Telegram | Vuln Medium/High/Critical (nuclei) | Finding por alvo |
+| Telegram | Segredo JS CRITICAL/HIGH/MEDIUM | JS Hunter com severity no finding |
+| Discord | Stats de scan (sub/host/ports/ep/hist/sec/vuln embed) | Fim de cada missão |
+| Discord | Heartbeat/rain-check | Fim de cada ciclo watchdog |
+
+## 8. Flags das ferramentas (implementadas)
+
+```bash
+subfinder  -dL <file> -o <out> -silent -rate-limit=N
+dnsx       -l <file> -o <out> -wd -silent -a -rate-limit=N
+naabu      -list <file> -o <out> -silent -rate 1000 -p <30 web ports> -exclude-cdn
+httpx      -l <file> -o <out> -silent -rate-limit N
+katana     -list <file> -o <out> -silent -js-crawl -crawl-duration Ns -depth 3
+urlfinder  -list <file> -o <out> -silent
+nuclei     -l <file> -o <out> -duc -silent -rl N -c 25 -timeout 5 -severity critical,high,medium [-tags tags]
+uncover    -q <query> -o <out> -silent -provider shodan,censys
+```
+
+## 9. JS Hunter — severidade por tipo
+
+| Tipo | Severidade |
+|------|-----------|
+| aws_access_key, aws_secret_key, private_key, stripe_key | CRITICAL |
+| google_api, slack_webhook, discord_webhook, auth_token, jwt_token, firebase_db | HIGH |
+| generic_api_key, password_or_secret | MEDIUM |
+| generic_url_param, interactsh | LOW |
+
+## 10. Filtro de falso positivo (8 camadas)
+
+1. Serviços OOB (interact.sh, oast.fun)
+2. Templates tech/WAF (header-detect, tech-detect)
+3. Fingerprints WAF (patterns cloudflare)
+4. Código-fonte HTML/Script
+5. Strings placeholder/exemplo
+6. Valores nulos/vazios
+7. Micro findings (< 3 chars)
+8. Filtro ML (LightGBM) — opcional, threshold configurável
+
+## 11. Modo IP/CIDR
+
+- Targets como `192.168.1.1`, `10.0.0.0/24` são detectados por `is_ip_target()`
+- CIDRs são expandidos por `expand_cidr()` — colapsados em handle único (`10_0_0_0_24`)
+- Subfinder/DNSX/Uncover são skippados
+- Naabu escaneia as 30 portas web antes do HTTPX — falha segura (fallback para IP:80)
+- URLFinder não retornará resultados para IPs (sem domínio histórico) — comportamento esperado
+
+## 12. Relatórios e exportação
+
+- `reports/{handle}_TIMESTAMP_report.md` — relatório Markdown por missão
+- Platform label correto: HackerOne / Intigriti / Bugcrowd / Custom (alvos.txt) / Unknown
+- Summary inclui: subdomínios, hosts vivos, portas abertas, endpoints, URLs históricas, segredos JS, vulns
+
+
+## 1. Modelo de execução ponta a ponta
+
+1. **Loop Watchdog** (`core/watchdog.py`)
+   - Sincroniza alvos wildcard via bbscope (H1/IT) — cada target tagueado com plataforma de origem
+   - Prioriza alvos com scoring unificado (`core/intel.py`) — escreve score no target dict
+   - Executa scans paralelos com sleep adaptativo 1-2h baseado em métricas de ciclo
+2. **Orquestração de missão** (`core/runner.py` → `core/scanner.py`)
+   - `ProOrchestrator.start_mission()` → `MissionRunner.run()`
+3. **Fase de reconhecimento**
    - Subfinder → DNSX → Uncover → HTTPX
 4. **Fase tática**
    - Katana → JS Hunter → Nuclei (apenas Medium/High/Critical)
